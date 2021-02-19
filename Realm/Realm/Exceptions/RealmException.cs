@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using Realms.Sync.Exceptions;
 
 namespace Realms.Exceptions
 {
@@ -105,6 +106,18 @@ namespace Realms.Exceptions
                 case RealmExceptionCodes.RealmClosed:
                     return new RealmClosedException(message);
 
+                case RealmExceptionCodes.NotNullableProperty:
+                case RealmExceptionCodes.PropertyMismatch:
+                    return new RealmException(message);
+
+                case RealmExceptionCodes.AppClientError:
+                case RealmExceptionCodes.AppCustomError:
+                case RealmExceptionCodes.AppHttpError:
+                case RealmExceptionCodes.AppJsonError:
+                case RealmExceptionCodes.AppServiceError:
+                case RealmExceptionCodes.AppUnknownError:
+                    return new AppException(message, helpLink: null, httpStatusCode: 0);
+
                 case RealmExceptionCodes.StdArgumentOutOfRange:
                 case RealmExceptionCodes.StdIndexOutOfRange:
                     return new ArgumentOutOfRangeException(message);
@@ -115,8 +128,8 @@ namespace Realms.Exceptions
                 case RealmExceptionCodes.ObjectManagedByAnotherRealm:
                     return new RealmObjectManagedByAnotherRealmException(message);
 
-                case RealmExceptionCodes.RealmFeatureUnavailable:
-                    return new RealmFeatureUnavailableException(message);
+                case RealmExceptionCodes.KeyAlreadyExists:
+                    return new ArgumentException(message);
 
                 default:
                     return new Exception(message);

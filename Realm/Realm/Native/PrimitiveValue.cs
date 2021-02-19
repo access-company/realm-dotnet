@@ -1,4 +1,4 @@
-﻿////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
 //
 // Copyright 2017 Realm Inc.
 //
@@ -17,122 +17,282 @@
 ////////////////////////////////////////////////////////////////////////////
 
 using System;
-using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Realms.Helpers;
-using Realms.Schema;
+using System.Text;
+using MongoDB.Bson;
 
 namespace Realms.Native
 {
     [StructLayout(LayoutKind.Explicit)]
-    [SuppressMessage("StyleCop.CSharp.NamingRules", "SA1307:AccessibleFieldsMustBeginWithUpperCaseLetter")]
-    internal struct PrimitiveValue
+    [DebuggerDisplay("PrimitiveValue({Type})")]
+    internal unsafe struct PrimitiveValue
     {
         [FieldOffset(0)]
+        private long int_value;
+
+        [FieldOffset(0)]
+        private float float_value;
+
+        [FieldOffset(0)]
+        private double double_value;
+
+        [FieldOffset(0)]
+        private fixed ulong decimal_bits[2];
+
+        [FieldOffset(0)]
+        private fixed byte object_id_bytes[12];
+
+        [FieldOffset(0)]
+        private fixed byte guid_bytes[16];
+
+        // Without this padding, .NET fails to marshal the decimal_bits array correctly and the second element is always 0.
+        [FieldOffset(8)]
+        [Obsolete("Don't use, please!")]
+        private long dontuse;
+
+        [FieldOffset(0)]
+        private StringValue string_value;
+
+        [FieldOffset(0)]
+        private BinaryValue data_value;
+
+        [FieldOffset(0)]
+        private TimestampValue timestamp_value;
+
+        [FieldOffset(0)]
+        private LinkValue link_value;
+
+        [FieldOffset(16)]
         [MarshalAs(UnmanagedType.U1)]
-        internal PropertyType type;
+        public RealmValueType Type;
 
-        [FieldOffset(1)]
-        [MarshalAs(UnmanagedType.I1)]
-        internal bool has_value;
+        public static PrimitiveValue Null() => new PrimitiveValue
+        {
+            Type = RealmValueType.Null,
+        };
 
-        [FieldOffset(8)]
-        [MarshalAs(UnmanagedType.I1)]
-        internal bool bool_value;
+        public static PrimitiveValue Bool(bool value) => new PrimitiveValue
+        {
+            Type = RealmValueType.Bool,
+            int_value = value ? 1 : 0,
+        };
 
-        [FieldOffset(8)]
-        internal long int_value;
+        public static PrimitiveValue NullableBool(bool? value) => value.HasValue ? Bool(value.Value) : Null();
 
-        [FieldOffset(8)]
-        internal float float_value;
+        public static PrimitiveValue Int(long value) => new PrimitiveValue
+        {
+            Type = RealmValueType.Int,
+            int_value = value
+        };
 
-        [FieldOffset(8)]
-        internal double double_value;
+        public static PrimitiveValue NullableInt(long? value) => value.HasValue ? Int(value.Value) : Null();
 
-        public static PrimitiveValue Create<T>(T value, PropertyType type)
+        public static PrimitiveValue Float(float value) => new PrimitiveValue
+        {
+            Type = RealmValueType.Float,
+            float_value = value
+        };
+
+        public static PrimitiveValue NullableFloat(float? value) => value.HasValue ? Float(value.Value) : Null();
+
+        public static PrimitiveValue Double(double value) => new PrimitiveValue
+        {
+            Type = RealmValueType.Double,
+            double_value = value
+        };
+
+        public static PrimitiveValue NullableDouble(double? value) => value.HasValue ? Double(value.Value) : Null();
+
+        public static PrimitiveValue Date(DateTimeOffset value) => new PrimitiveValue
+        {
+            Type = RealmValueType.Date,
+            timestamp_value = new TimestampValue(value.ToUniversalTime().Ticks)
+        };
+
+        public static PrimitiveValue NullableDate(DateTimeOffset? value) => value.HasValue ? Date(value.Value) : Null();
+
+        public static PrimitiveValue Decimal(Decimal128 value)
         {
             var result = new PrimitiveValue
             {
-                type = type,
-                has_value = true
+                Type = RealmValueType.Decimal128,
             };
 
-            switch (type)
+            result.decimal_bits[0] = value.GetIEEELowBits();
+            result.decimal_bits[1] = value.GetIEEEHighBits();
+
+            return result;
+        }
+
+        public static PrimitiveValue NullableDecimal(Decimal128? value) => value.HasValue ? Decimal(value.Value) : Null();
+
+        public static PrimitiveValue ObjectId(ObjectId value)
+        {
+            var result = new PrimitiveValue
             {
-                case PropertyType.Bool:
-                    result.bool_value = Operator.Convert<T, bool>(value);
-                    break;
-                case PropertyType.Bool | PropertyType.Nullable:
-                    var boolValue = Operator.Convert<T, bool?>(value);
-                    result.has_value = boolValue.HasValue;
-                    result.bool_value = boolValue.GetValueOrDefault();
-                    break;
-                case PropertyType.Int:
-                    result.int_value = Operator.Convert<T, long>(value);
-                    break;
-                case PropertyType.Int | PropertyType.Nullable:
-                    var longValue = Operator.Convert<T, long?>(value);
-                    result.has_value = longValue.HasValue;
-                    result.int_value = longValue.GetValueOrDefault();
-                    break;
-                case PropertyType.Float:
-                    result.float_value = Operator.Convert<T, float>(value);
-                    break;
-                case PropertyType.Float | PropertyType.Nullable:
-                    var floatValue = Operator.Convert<T, float?>(value);
-                    result.has_value = floatValue.HasValue;
-                    result.float_value = floatValue.GetValueOrDefault();
-                    break;
-                case PropertyType.Double:
-                    result.double_value = Operator.Convert<T, double>(value);
-                    break;
-                case PropertyType.Double | PropertyType.Nullable:
-                    var doubleValue = Operator.Convert<T, double?>(value);
-                    result.has_value = doubleValue.HasValue;
-                    result.double_value = doubleValue.GetValueOrDefault();
-                    break;
-                case PropertyType.Date:
-                    result.int_value = Operator.Convert<T, DateTimeOffset>(value).ToUniversalTime().Ticks;
-                    break;
-                case PropertyType.Date | PropertyType.Nullable:
-                    var dateValue = Operator.Convert<T, DateTimeOffset?>(value);
-                    result.has_value = dateValue.HasValue;
-                    result.int_value = dateValue.GetValueOrDefault().ToUniversalTime().Ticks;
-                    break;
-                default:
-                    throw new NotSupportedException($"PrimitiveType {type} is not supported.");
+                Type = RealmValueType.ObjectId,
+            };
+
+            var objectIdBytes = value.ToByteArray();
+            for (var i = 0; i < 12; i++)
+            {
+                result.object_id_bytes[i] = objectIdBytes[i];
             }
 
             return result;
         }
 
-        public T Get<T>()
+        public static PrimitiveValue NullableObjectId(ObjectId? value) => value.HasValue ? ObjectId(value.Value) : Null();
+
+        public static PrimitiveValue Guid(Guid value)
         {
-            switch (type)
+            var result = new PrimitiveValue
             {
-                case PropertyType.Bool:
-                    return Operator.Convert<bool, T>(bool_value);
-                case PropertyType.Bool | PropertyType.Nullable:
-                    return Operator.Convert<bool?, T>(has_value ? bool_value : (bool?)null);
-                case PropertyType.Int:
-                    return Operator.Convert<long, T>(int_value);
-                case PropertyType.Int | PropertyType.Nullable:
-                    return Operator.Convert<long?, T>(has_value ? int_value : (long?)null);
-                case PropertyType.Float:
-                    return Operator.Convert<float, T>(float_value);
-                case PropertyType.Float | PropertyType.Nullable:
-                    return Operator.Convert<float?, T>(has_value ? float_value : (float?)null);
-                case PropertyType.Double:
-                    return Operator.Convert<double, T>(double_value);
-                case PropertyType.Double | PropertyType.Nullable:
-                    return Operator.Convert<double?, T>(has_value ? double_value : (double?)null);
-                case PropertyType.Date:
-                    return Operator.Convert<DateTimeOffset, T>(new DateTimeOffset(int_value, TimeSpan.Zero));
-                case PropertyType.Date | PropertyType.Nullable:
-                    return Operator.Convert<DateTimeOffset?, T>(has_value ? new DateTimeOffset(int_value, TimeSpan.Zero) : (DateTimeOffset?)null);
-                default:
-                    throw new NotSupportedException($"PrimitiveType {type} is not supported.");
+                Type = RealmValueType.Guid,
+            };
+
+            var guidBytes = value.ToByteArray();
+            for (var i = 0; i < 16; i++)
+            {
+                result.guid_bytes[i] = guidBytes[i];
             }
+
+            return result;
+        }
+
+        public static PrimitiveValue NullableGuid(Guid? value) => value.HasValue ? Guid(value.Value) : Null();
+
+        public static PrimitiveValue Data(IntPtr dataPtr, int size)
+        {
+            return new PrimitiveValue
+            {
+                Type = RealmValueType.Data,
+                data_value = new BinaryValue
+                {
+                    data = (byte*)dataPtr,
+                    size = (IntPtr)size
+                }
+            };
+        }
+
+        public static PrimitiveValue String(IntPtr dataPtr, int size)
+        {
+            return new PrimitiveValue
+            {
+                Type = RealmValueType.String,
+                string_value = new StringValue
+                {
+                    data = (byte*)dataPtr,
+                    size = (IntPtr)size
+                }
+            };
+        }
+
+        public static PrimitiveValue Object(ObjectHandle handle)
+        {
+            return new PrimitiveValue
+            {
+                Type = handle == null ? RealmValueType.Null : RealmValueType.Object,
+                link_value = new LinkValue
+                {
+                    object_ptr = handle?.DangerousGetHandle() ?? IntPtr.Zero
+                }
+            };
+        }
+
+        public bool AsBool() => int_value == 1;
+
+        public long AsInt() => int_value;
+
+        public float AsFloat() => float_value;
+
+        public double AsDouble() => double_value;
+
+        public DateTimeOffset AsDate() => new DateTimeOffset(timestamp_value.ToTicks(), TimeSpan.Zero);
+
+        public Decimal128 AsDecimal() => Decimal128.FromIEEEBits(decimal_bits[1], decimal_bits[0]);
+
+        public ObjectId AsObjectId()
+        {
+            var bytes = new byte[12];
+            for (var i = 0; i < 12; i++)
+            {
+                bytes[i] = object_id_bytes[i];
+            }
+
+            return new ObjectId(bytes);
+        }
+
+        public Guid AsGuid()
+        {
+            var bytes = new byte[16];
+            for (var i = 0; i < 16; i++)
+            {
+                bytes[i] = object_id_bytes[i];
+            }
+
+            return new Guid(bytes);
+        }
+
+        public string AsString() => Encoding.UTF8.GetString(string_value.data, (int)string_value.size);
+
+        public byte[] AsBinary()
+        {
+            if (Type == RealmValueType.Null)
+            {
+                return null;
+            }
+
+            var bytes = new byte[(int)data_value.size];
+            for (var i = 0; i < bytes.Length; i++)
+            {
+                bytes[i] = data_value.data[i];
+            }
+
+            return bytes;
+        }
+
+        public ObjectHandle AsObject(RealmHandle root) => new ObjectHandle(root, link_value.object_ptr);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private unsafe struct StringValue
+        {
+            public byte* data;
+            public IntPtr size;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private unsafe struct BinaryValue
+        {
+            public byte* data;
+            public IntPtr size;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct LinkValue
+        {
+            public IntPtr object_ptr;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct TimestampValue
+        {
+            private const long UnixEpochTicks = 621355968000000000;
+            private const long TicksPerSecond = 10000000;
+            private const long NanosecondsPerTick = 100;
+
+            private long seconds;
+            private int nanoseconds;
+
+            public TimestampValue(long ticks)
+            {
+                var unix_ticks = ticks - UnixEpochTicks;
+                seconds = unix_ticks / TicksPerSecond;
+                nanoseconds = (int)((unix_ticks % TicksPerSecond) * NanosecondsPerTick);
+            }
+
+            public long ToTicks() => (seconds * TicksPerSecond) + (nanoseconds / NanosecondsPerTick) + UnixEpochTicks;
         }
     }
 }

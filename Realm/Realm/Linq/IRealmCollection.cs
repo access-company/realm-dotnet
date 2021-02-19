@@ -20,86 +20,10 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using Realms.Schema;
 
 namespace Realms
 {
-    /// <summary>
-    /// A <see cref="ChangeSet" /> describes the changes inside a <see cref="IRealmCollection{T}" /> since the last time the notification callback was invoked.
-    /// </summary>
-    public class ChangeSet
-    {
-        /// <summary>
-        /// Gets the indices in the new version of the <see cref="IRealmCollection{T}" /> which were newly inserted.
-        /// </summary>
-        /// <value>An array, containing the indices of the inserted objects.</value>
-        public int[] InsertedIndices { get; }
-
-        /// <summary>
-        /// Gets the indices in the *old* version of the <see cref="IRealmCollection{T}"/> which were modified.
-        /// This means that either the property of an object at that index was modified or the property of
-        /// of an object it's related to has changed.
-        /// </summary>
-        /// <value>An array, containing the indices of the modified objects.</value>
-        public int[] ModifiedIndices { get; }
-
-        /// <summary>
-        /// Gets the indices in the *new* version of the <see cref="IRealmCollection{T}"/> which were modified.
-        /// Conceptually, it contains the same entries as <see cref="ModifiedIndices"/> but after the insertions
-        /// and deletions have been accounted for.
-        /// </summary>
-        /// <value>An array, containing the indices of the modified objects.</value>
-        public int[] NewModifiedIndices { get; }
-
-        /// <summary>
-        /// Gets the indices of objects in the previous version of the <see cref="IRealmCollection{T}"/> which have been removed from this one.
-        /// </summary>
-        /// <value>An array, containing the indices of the deleted objects.</value>
-        public int[] DeletedIndices { get; }
-
-        /// <summary>
-        /// Gets the rows in the collection which moved.
-        /// </summary>
-        /// <remarks>
-        /// Every <see cref="Move.From"/> index will be present in <see cref="DeletedIndices"/> and every <see cref="Move.To"/>
-        /// index will be present in <see cref="InsertedIndices"/>.
-        /// </remarks>
-        /// <value>An array of <see cref="Move"/> structs, indicating the source and the destination index of the moved row.</value>
-        public Move[] Moves { get; }
-
-        internal ChangeSet(int[] insertedIndices, int[] modifiedIndices, int[] newModifiedIndices, int[] deletedIndices, Move[] moves)
-        {
-            InsertedIndices = insertedIndices;
-            ModifiedIndices = modifiedIndices;
-            NewModifiedIndices = newModifiedIndices;
-            DeletedIndices = deletedIndices;
-            Moves = moves;
-        }
-
-        /// <summary>
-        /// A <see cref="Move" /> contains information about objects that moved within the same <see cref="IRealmCollection{T}"/>.
-        /// </summary>
-        public struct Move
-        {
-            /// <summary>
-            /// Gets the index in the old version of the <see cref="IRealmCollection{T}" /> from which the object has moved.
-            /// </summary>
-            /// <value>The source index of the object.</value>
-            public int From { get; }
-
-            /// <summary>
-            /// Gets the index in the new version of the <see cref="IRealmCollection{T}" /> to which the object has moved.
-            /// </summary>
-            /// <value>The destination index of the object.</value>
-            public int To { get; }
-
-            internal Move(int from, int to)
-            {
-                From = from;
-                To = to;
-            }
-        }
-    }
-
     /// <summary>
     /// A callback that will be invoked each time the contents of a <see cref="IRealmCollection{T}"/> have changed.
     /// </summary>
@@ -108,21 +32,81 @@ namespace Realms
     /// or <c>null</c> if an has error occurred.</param>
     /// <param name="error">An exception that might have occurred while asynchronously monitoring a
     /// <see cref="IRealmCollection{T}"/> for changes, or <c>null</c> if no errors have occurred.</param>
-    /// <typeparam name="T">Type of the <see cref="RealmObject"/> which is being returned.</typeparam>
+    /// <typeparam name="T">Type of the <see cref="RealmObject"/>, <see cref="EmbeddedObject"/>, or primitive which is being returned.</typeparam>
     public delegate void NotificationCallbackDelegate<in T>(IRealmCollection<T> sender, ChangeSet changes, Exception error);
 
     /// <summary>
-    /// Iterable, sortable collection of one kind of RealmObject resulting from <see cref="Realm.All{T}"/> or from a LINQ query expression.
+    /// Iterable, sortable collection of one kind of RealmObjectBase resulting from <see cref="Realm.All{T}"/> or from a LINQ query expression.
     /// </summary>
-    /// <typeparam name="T">Type of the <see cref="RealmObject"/> which is being returned.</typeparam>
+    /// <typeparam name="T">Type of the <see cref="RealmObject"/>, <see cref="EmbeddedObject"/>, or primitive which is being returned.</typeparam>
     public interface IRealmCollection<out T> : IReadOnlyList<T>, INotifyCollectionChanged, INotifyPropertyChanged
     {
+        /// <summary>
+        /// Searches for the specified object and returns the zero-based index of the first
+        /// occurrence within the entire <see cref="IRealmCollection{T}"/>.
+        /// </summary>
+        /// <param name="item">
+        /// The object to locate in the <see cref="IRealmCollection{T}"/>.
+        /// </param>
+        /// <returns>
+        /// The zero-based index of the first occurrence of item within the entire <see cref="IRealmCollection{T}"/>,
+        /// if found; otherwise, –1.
+        /// </returns>
+        int IndexOf(object item);
+
+        /// <summary>
+        /// Determines whether an element is in the <see cref="IRealmCollection{T}"/>.
+        /// </summary>
+        /// <param name="item">
+        /// The object to locate in the <see cref="IRealmCollection{T}"/>.
+        /// </param>
+        /// <returns>true if item is found in the <see cref="IRealmCollection{T}"/>; otherwise, false.</returns>
+        bool Contains(object item);
+
         /// <summary>
         /// Gets a value indicating whether this collection is still valid to use, i.e. the <see cref="Realm"/> instance
         /// hasn't been closed and, if it represents a to-many relationship, it's parent object hasn't been deleted.
         /// </summary>
         /// <value><c>true</c> if the collection is valid to use; <c>false</c> otherwise.</value>
         bool IsValid { get; }
+
+        /// <summary>
+        /// Gets the <see cref="Realm"/> instance this collection belongs to.
+        /// </summary>
+        /// <value>The <see cref="Realm"/> instance this collection belongs to.</value>
+        Realm Realm { get; }
+
+        /// <summary>
+        /// Gets the <see cref="Schema.ObjectSchema"/>, describing the persisted properties of the
+        /// <see cref="RealmObject"/>s or <see cref="EmbeddedObject"/>s contained in the collection. If the collection contains
+        /// primitive values, <c>ObjectSchema</c> will be <c>null</c>.
+        /// </summary>
+        /// <value>The ObjectSchema of the object or contained objects.</value>
+        ObjectSchema ObjectSchema { get; }
+
+        /// <summary>
+        /// Gets a value indicating whether this collection is frozen. Frozen collections are immutable and can be accessed
+        /// from any thread. The objects read from a frozen collection will also be frozen.
+        /// </summary>
+        bool IsFrozen { get; }
+
+        /// <summary>
+        /// Creates a frozen snapshot of this collection. The frozen copy can be read and queried from any thread.
+        /// <para/>
+        /// Freezing a collection also creates a frozen Realm which has its own lifecycle, but if the live Realm that spawned the
+        /// original collection is fully closed (i.e. all instances across all threads are closed), the frozen Realm and
+        /// collection will be closed as well.
+        /// <para/>
+        /// Frozen collections can be queried as normal, but trying to mutate it in any way or attempting to register a listener will
+        /// throw a <see cref="Exceptions.RealmFrozenException"/>.
+        /// <para/>
+        /// Note: Keeping a large number of frozen objects with different versions alive can have a negative impact on the filesize
+        /// of the Realm. In order to avoid such a situation it is possible to set <see cref="RealmConfigurationBase.MaxNumberOfActiveVersions"/>.
+        /// </summary>
+        /// <returns>A frozen copy of this collection.</returns>
+        /// <seealso cref="FrozenObjectsExtensions.Freeze{T}(IList{T})"/>
+        /// <seealso cref="FrozenObjectsExtensions.Freeze{T}(System.Linq.IQueryable{T})"/>
+        IRealmCollection<T> Freeze();
 
         /// <summary>
         /// Register a callback to be invoked each time this <see cref="IRealmCollection{T}"/> changes.
@@ -156,6 +140,8 @@ namespace Realms
         /// A subscription token. It must be kept alive for as long as you want to receive change notifications.
         /// To stop receiving notifications, call <see cref="IDisposable.Dispose" />.
         /// </returns>
+        /// <seealso cref="CollectionExtensions.SubscribeForNotifications{T}(IList{T}, NotificationCallbackDelegate{T})"/>
+        /// <seealso cref="CollectionExtensions.SubscribeForNotifications{T}(System.Linq.IQueryable{T}, NotificationCallbackDelegate{T})"/>
         IDisposable SubscribeForNotifications(NotificationCallbackDelegate<T> callback);
     }
 }

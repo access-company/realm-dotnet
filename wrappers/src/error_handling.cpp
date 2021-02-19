@@ -18,8 +18,8 @@
 #include <stdexcept>
 #include <sstream>
 #include <cassert>
-#include "object-store/src/shared_realm.hpp"
-#include "object-store/src/object_store.hpp"
+#include <realm/object-store/shared_realm.hpp>
+#include <realm/object-store/object_store.hpp>
 #include "wrapper_exceptions.hpp"
 #include "realm_export_decls.hpp"
 #include "error_handling.hpp"
@@ -27,19 +27,13 @@
 #include "shared_realm_cs.hpp"
 
 // core headers for exception types
-#include "realm/util/file.hpp" 
-#include "realm/alloc_slab.hpp"
-#include "object_accessor.hpp"
+#include <realm/util/file.hpp> 
+#include <realm/alloc_slab.hpp>
+#include <realm/object-store/object_accessor.hpp>
+
+using namespace realm::app;
 
 namespace realm {
-
-    SetDuplicatePrimaryKeyValueException::SetDuplicatePrimaryKeyValueException(std::string object_type, std::string property, std::string value)
-        : std::runtime_error(util::format(
-            "A %1 object already exists with primary key property %2 == '%3'",
-        object_type, property, value))
-    {}
-
-
     /**
     @note mostly copied from util.cpp in Java but has a much richer range of exceptions
     @warning if you update these codes also update the matching RealmExceptionCodes.cs
@@ -64,8 +58,6 @@ namespace realm {
                 return { RealmErrorType::RealmIncompatibleLockFile, e.what() };
             case RealmFileException::Kind::FormatUpgradeRequired:
                 return { RealmErrorType::RealmFormatUpgradeRequired, e.what() };
-            case RealmFileException::Kind::IncompatibleSyncedRealm:
-                return { RealmErrorType::RealmIncompatibleSyncedFile, e.what(), e.path() };
             default:
                 return { RealmErrorType::RealmError, e.what() };
             }
@@ -119,8 +111,37 @@ namespace realm {
         catch (const ObjectManagedByAnotherRealmException& e) {
             return { RealmErrorType::ObjectManagedByAnotherRealm, e.what() };
         }
-        catch (const RealmFeatureUnavailableException& e) {
-            return { RealmErrorType::RealmFeatureUnavailable, e.what() };
+        catch (const NotNullableException& e) {
+            return { RealmErrorType::NotNullableProperty, e.what() };
+        }
+        catch (const PropertyTypeMismatchException& e) {
+            return { RealmErrorType::PropertyMismatch, e.what() };
+        }
+        catch (const KeyAlreadyExistsException& e) {
+            return { RealmErrorType::KeyAlreadyExists, e.what() };
+        }
+        catch (const AppError& e) {
+            if (e.is_client_error()) {
+                return { RealmErrorType::AppClientError, e.message };
+            }
+
+            if (e.is_custom_error()) {
+                return { RealmErrorType::AppCustomError, e.message };
+            }
+
+            if (e.is_http_error()) {
+                return { RealmErrorType::AppHttpError, e.message };
+            }
+
+            if (e.is_json_error()) {
+                return { RealmErrorType::AppJsonError, e.message };
+            }
+
+            if (e.is_service_error()) {
+                return { RealmErrorType::AppCustomError, e.message };
+            }
+
+            return { RealmErrorType::AppUnknownError, e.message };
         }
         catch (const std::bad_alloc& e) {
             return { RealmErrorType::RealmOutOfMemory, e.what() };

@@ -16,13 +16,12 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-using System.Collections.Generic;
 using System.Reflection;
 using Windows.ApplicationModel.Activation;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 
-namespace Tests.UWP
+namespace Realms.Tests.UWP
 {
     public partial class App : Application
     {

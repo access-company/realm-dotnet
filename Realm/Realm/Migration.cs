@@ -31,7 +31,7 @@ namespace Realms
     /// You can read from the <see cref="OldRealm"/> and access properties that have been removed from
     /// the classes by using the dynamic API.
     /// </summary>
-    /// <seealso href="https://realm.io/docs/xamarin/latest/#migrations">See more in the migrations section in the documentation.</seealso>
+    /// <seealso href="https://docs.mongodb.com/realm/dotnet/migrations">See more in the migrations section in the documentation.</seealso>
     public class Migration
     {
         private readonly RealmConfiguration _configuration;
@@ -83,7 +83,7 @@ namespace Realms
             return true;
         }
 
-        [NativeCallback(typeof(MigrationCallback))]
+        [MonoPInvokeCallback(typeof(MigrationCallback))]
         private static bool MigrationCallback(IntPtr oldRealmPtr, IntPtr newRealmPtr, Native.Schema oldSchema, ulong schemaVersion, IntPtr managedMigrationHandle)
         {
             var migrationHandle = GCHandle.FromIntPtr(managedMigrationHandle);

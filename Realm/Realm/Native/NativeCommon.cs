@@ -18,7 +18,6 @@
 
 // file NativeCommon.cs provides mappings to common functions that don't fit the Table classes etc.
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -28,14 +27,13 @@ using Realms.Native;
 
 namespace Realms
 {
-    [SuppressMessage("StyleCop.CSharp.NamingRules", "SA1300:ElementMustBeginWithUpperCaseLetter")]
     internal static class NativeCommon
     {
 #if DEBUG
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public unsafe delegate void DebugLoggerCallback(byte* utf8String, IntPtr stringLen);
 
-        [NativeCallback(typeof(DebugLoggerCallback))]
+        [MonoPInvokeCallback(typeof(DebugLoggerCallback))]
         private static unsafe void DebugLogger(byte* utf8String, IntPtr stringLen)
         {
             var message = Encoding.UTF8.GetString(utf8String, (int)stringLen);
@@ -49,6 +47,9 @@ namespace Realms
         [DllImport(InteropConfig.DLL_NAME, EntryPoint = "delete_pointer", CallingConvention = CallingConvention.Cdecl)]
         public static extern unsafe void delete_pointer(void* pointer);
 
+        [DllImport(InteropConfig.DLL_NAME, EntryPoint = "delete_pointer", CallingConvention = CallingConvention.Cdecl)]
+        public static extern unsafe void delete_pointer(IntPtr pointer);
+
         [DllImport(InteropConfig.DLL_NAME, EntryPoint = "realm_reset_for_testing", CallingConvention = CallingConvention.Cdecl)]
         public static extern void reset_for_testing();
 
@@ -58,28 +59,18 @@ namespace Realms
         {
             if (Interlocked.CompareExchange(ref _isInitialized, 1, 0) == 0)
             {
-                try
-                {
-                    var osVersionPI = typeof(Environment).GetProperty("OSVersion");
-                    var platformPI = osVersionPI?.PropertyType.GetProperty("Platform");
-                    var assemblyLocationPI = typeof(Assembly).GetProperty("Location", BindingFlags.Public | BindingFlags.Instance);
-                    if (osVersionPI != null && osVersionPI != null && assemblyLocationPI != null)
-                    {
-                        var osVersion = osVersionPI.GetValue(null);
-                        var platform = platformPI.GetValue(osVersion);
+                var platform = Environment.OSVersion.Platform;
 
-                        if (platform.ToString() == "Win32NT")
-                        {
-                            var assemblyLocation = Path.GetDirectoryName((string)assemblyLocationPI.GetValue(typeof(NativeCommon).GetTypeInfo().Assembly));
-                            var architecture = InteropConfig.Is64BitProcess ? "x64" : "x86";
-                            var path = Path.Combine(assemblyLocation, "lib", "win32", architecture) + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH");
-                            Environment.SetEnvironmentVariable("PATH", path);
-                        }
-                    }
-                }
-                catch
+                if (platform == PlatformID.Win32NT)
                 {
-                    // Try to put wrappers in PATH on Windows Desktop, but be silent if anything fails.
+                    // This is the path for regular windows apps using NuGet.
+                    AddWindowsWrappersToPath("lib\\win32");
+
+                    // This is the path for Unity apps built as standalone.
+                    AddWindowsWrappersToPath("..\\Plugins", isUnityTarget: true);
+
+                    // This is the path in the Unity package - it is what the Editor uses.
+                    AddWindowsWrappersToPath("Windows", isUnityTarget: true);
                 }
 
 #if DEBUG
@@ -88,7 +79,32 @@ namespace Realms
                 set_debug_logger(logger);
 #endif
 
-                SynchronizationContextEventLoopSignal.Install();
+                SynchronizationContextScheduler.Install();
+            }
+        }
+
+        private static void AddWindowsWrappersToPath(string relativePath, bool isUnityTarget = false)
+        {
+            try
+            {
+                var assemblyLocation = Path.GetDirectoryName(typeof(NativeCommon).GetTypeInfo().Assembly.Location);
+
+                var expectedFilePath = Path.GetFullPath(Path.Combine(assemblyLocation, relativePath, getArchitecture()));
+                var path = expectedFilePath + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Process);
+                Environment.SetEnvironmentVariable("PATH", path, EnvironmentVariableTarget.Process);
+            }
+            catch
+            {
+            }
+
+            string getArchitecture()
+            {
+                if (!Environment.Is64BitProcess)
+                {
+                    return "x86";
+                }
+
+                return isUnityTarget ? "x86_64" : "x64";
             }
         }
     }

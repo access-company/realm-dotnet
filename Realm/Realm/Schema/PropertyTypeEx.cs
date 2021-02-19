@@ -19,7 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
+using MongoDB.Bson;
 using Realms.Helpers;
 
 namespace Realms.Schema
@@ -76,31 +76,108 @@ namespace Realms.Schema
                 case Type _ when type == typeof(double):
                     return PropertyType.Double | nullabilityModifier;
 
-                case Type _ when type == typeof(RealmObject) || type.GetTypeInfo().BaseType == typeof(RealmObject):
+                case Type _ when type == typeof(decimal) || type == typeof(Decimal128):
+                    return PropertyType.Decimal | nullabilityModifier;
+
+                case Type _ when type == typeof(ObjectId):
+                    return PropertyType.ObjectId | nullabilityModifier;
+
+                case Type _ when type == typeof(Guid):
+                    return PropertyType.Guid | nullabilityModifier;
+
+                case Type _ when type.IsRealmObject() || type.IsEmbeddedObject():
                     objectType = type;
                     return PropertyType.Object | PropertyType.Nullable;
 
                 case Type _ when type.IsClosedGeneric(typeof(IList<>), out var typeArguments):
-                    var result = PropertyType.Array | typeArguments.Single().ToPropertyType(out objectType);
+                    var listResult = PropertyType.Array | typeArguments.Single().ToPropertyType(out objectType);
 
-                    if (result.HasFlag(PropertyType.Object))
+                    if (listResult.HasFlag(PropertyType.Object))
                     {
                         // List<Object> can't contain nulls
-                        result &= ~PropertyType.Nullable;
+                        listResult &= ~PropertyType.Nullable;
                     }
 
-                    return result;
+                    return listResult;
 
+                case Type _ when type.IsClosedGeneric(typeof(ISet<>), out var typeArguments):
+                    var setResult = PropertyType.Set | typeArguments.Single().ToPropertyType(out objectType);
+
+                    if (setResult.HasFlag(PropertyType.Object))
+                    {
+                        // Set<Object> can't contain nulls
+                        setResult &= ~PropertyType.Nullable;
+                    }
+
+                    return setResult;
+                case Type _ when type.IsClosedGeneric(typeof(IDictionary<,>), out var typeArguments):
+                    return PropertyType.Dictionary | typeArguments.Last().ToPropertyType(out objectType);
+                case Type _ when type.IsClosedGeneric(typeof(KeyValuePair<,>), out var typeArguments):
+                    return typeArguments.Last().ToPropertyType(out objectType);
                 default:
                     throw new ArgumentException($"The property type {type.Name} cannot be expressed as a Realm schema type", nameof(type));
             }
         }
 
-        public static bool IsComputed(this PropertyType propertyType) => propertyType.HasFlag(PropertyType.LinkingObjects);
+        public static Type ToType(this PropertyType type)
+        {
+            return type switch
+            {
+                PropertyType.Int => typeof(long),
+                PropertyType.Bool => typeof(bool),
+                PropertyType.String => typeof(string),
+                PropertyType.Data => typeof(byte[]),
+                PropertyType.Date => typeof(DateTimeOffset),
+                PropertyType.Float => typeof(float),
+                PropertyType.Double => typeof(double),
+                PropertyType.Object => typeof(RealmObjectBase),
+                PropertyType.ObjectId => typeof(ObjectId),
+                PropertyType.Decimal => typeof(Decimal128),
+                PropertyType.Guid => typeof(Guid),
+                PropertyType.NullableInt => typeof(long?),
+                PropertyType.NullableBool => typeof(bool?),
+                PropertyType.NullableString => typeof(string),
+                PropertyType.NullableData => typeof(byte[]),
+                PropertyType.NullableDate => typeof(DateTimeOffset?),
+                PropertyType.NullableFloat => typeof(float?),
+                PropertyType.NullableDouble => typeof(double?),
+                PropertyType.NullableObjectId => typeof(ObjectId?),
+                PropertyType.NullableDecimal => typeof(Decimal128?),
+                PropertyType.NullableGuid => typeof(Guid?),
+                _ => throw new NotSupportedException($"Unexpected property type: {type}"),
+            };
+        }
+
+        public static RealmValueType ToRealmValueType(this PropertyType type)
+        {
+            return type.UnderlyingType() switch
+            {
+                PropertyType.Int => RealmValueType.Int,
+                PropertyType.Bool => RealmValueType.Bool,
+                PropertyType.String => RealmValueType.String,
+                PropertyType.Data => RealmValueType.Data,
+                PropertyType.Date => RealmValueType.Date,
+                PropertyType.Float => RealmValueType.Float,
+                PropertyType.Double => RealmValueType.Double,
+                PropertyType.Object => RealmValueType.Object,
+                PropertyType.ObjectId => RealmValueType.ObjectId,
+                PropertyType.Decimal => RealmValueType.Decimal128,
+                PropertyType.Guid => RealmValueType.Guid,
+                _ => throw new NotSupportedException($"The type {type} can't be mapped to RealmValueType."),
+            };
+        }
+
+        public static bool IsComputed(this PropertyType propertyType) => propertyType == (PropertyType.LinkingObjects | PropertyType.Array);
 
         public static bool IsNullable(this PropertyType propertyType) => propertyType.HasFlag(PropertyType.Nullable);
 
         public static bool IsArray(this PropertyType propertyType) => propertyType.HasFlag(PropertyType.Array);
+
+        public static bool IsSet(this PropertyType propertyType) => propertyType.HasFlag(PropertyType.Set);
+
+        public static bool IsDictionary(this PropertyType propertyType) => propertyType.HasFlag(PropertyType.Dictionary);
+
+        public static bool IsCollection(this PropertyType propertyType) => propertyType.IsArray() || propertyType.IsSet() || propertyType.IsDictionary();
 
         public static PropertyType UnderlyingType(this PropertyType propertyType) => propertyType & ~PropertyType.Flags;
     }

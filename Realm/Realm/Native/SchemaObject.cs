@@ -16,13 +16,11 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
 namespace Realms.Native
 {
     [StructLayout(LayoutKind.Sequential)]
-    [SuppressMessage("StyleCop.CSharp.NamingRules", "SA1307:AccessibleFieldsMustBeginWithUpperCaseLetter")]
     internal struct SchemaObject
     {
         internal static readonly int Size = Marshal.SizeOf<SchemaObject>();
@@ -32,5 +30,8 @@ namespace Realms.Native
 
         internal int properties_start;
         internal int properties_end;
+
+        [MarshalAs(UnmanagedType.U1)]
+        internal bool is_embedded;
     }
 }

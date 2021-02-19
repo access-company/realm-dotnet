@@ -16,8 +16,7 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-#ifndef REALM_ERROR_TYPE_HPP
-#define REALM_ERROR_TYPE_HPP
+#pragma once
 
 namespace realm {
 
@@ -74,20 +73,32 @@ namespace realm {
         RealmClosed = 24,
         
         ObjectManagedByAnotherRealm = 25,
-        
-        RealmFeatureUnavailable = 26,
-        
-        RealmIncompatibleSyncedFile = 27,
-        
+
+        KeyAlreadyExists = 26,
+     
         RealmDotNetExceptionDuringMigration = 30,
+
+        NotNullableProperty = 31,
+        
+        PropertyMismatch = 32,
 
         StdArgumentOutOfRange = 100,
 
         StdIndexOutOfRange = 101,
 
-        StdInvalidOperation = 102
+        StdInvalidOperation = 102,
+
+        AppClientError = 50,
+
+        AppCustomError = 51,
+
+        AppHttpError = 52,
+
+        AppJsonError = 53,
+
+        AppServiceError = 54,
+
+        AppUnknownError = 59,
     };
 
 }   // namespace realm
-
-#endif /* defined(REALM_ERROR_TYPE_HPP) */

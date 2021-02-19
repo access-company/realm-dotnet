@@ -41,10 +41,19 @@ namespace Realms.Exceptions
         RealmDuplicatePrimaryKeyValue = 23,
         RealmClosed = 24,
         ObjectManagedByAnotherRealm = 25,
-        RealmFeatureUnavailable = 26,
-        RealmIncompatibleSyncedFile = 27,
+        KeyAlreadyExists = 26,
 
         RealmDotNetExceptionDuringMigration = 30,
+
+        NotNullableProperty = 31,
+        PropertyMismatch = 32,
+
+        AppClientError = 50,
+        AppCustomError = 51,
+        AppHttpError = 52,
+        AppJsonError = 53,
+        AppServiceError = 54,
+        AppUnknownError = 59,
 
         StdArgumentOutOfRange = 100,
         StdIndexOutOfRange = 101,

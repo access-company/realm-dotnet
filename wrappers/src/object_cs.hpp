@@ -16,8 +16,10 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-#include "object_accessor.hpp"
 #include "shared_realm_cs.hpp"
+#include "error_handling.hpp"
+
+#include <realm/object-store/object_accessor.hpp>
 
 using namespace realm;
 using namespace realm::binding;
@@ -26,24 +28,28 @@ namespace realm {
     inline void verify_can_get(const Object& object) {
         if (object.realm()->is_closed())
             throw RealmClosedException();
-        
+
         if (!object.is_valid())
             throw RowDetachedException();
-        
+
         object.realm()->verify_thread();
     }
-    
+
     inline void verify_can_set(const Object& object) {
         if (object.realm()->is_closed())
             throw RealmClosedException();
-        
+
         if (!object.is_valid())
             throw RowDetachedException();
-        
+
         object.realm()->verify_in_write();
     }
-    
-    inline size_t get_column_index(const Object& object, const size_t property_index) {
-        return object.get_object_schema().persisted_properties[property_index].table_column;
+
+    inline const Property get_property(const Object& object, const size_t property_index) {
+        return object.get_object_schema().persisted_properties[property_index];
+    }
+
+    inline const ColKey get_column_key(const Object& object, const size_t property_index) {
+         return get_property(object, property_index).column_key;
     }
 }

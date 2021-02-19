@@ -15,37 +15,46 @@
 // limitations under the License.
 //
 ////////////////////////////////////////////////////////////////////////////
- 
-#include <realm.hpp>
-#include <realm/lang_bind_helper.hpp>
+
+
 #include "error_handling.hpp"
-#include "realm_export_decls.hpp"
 #include "marshalling.hpp"
-#include "object_accessor.hpp"
-#include "object-store/src/object_store.hpp"
-#include "object-store/src/binding_context.hpp"
-#include <list>
+#include "realm_export_decls.hpp"
 #include "shared_realm_cs.hpp"
-#include "object-store/src/binding_context.hpp"
+
+#include <realm.hpp>
+#include <realm/object-store/object_store.hpp>
+#include <realm/object-store/binding_context.hpp>
+#include <realm/object-store/object_accessor.hpp>
+#include <realm/object-store/thread_safe_reference.hpp>
+#include <realm/object-store/sync/async_open_task.hpp>
+
+#include <list>
 #include <unordered_set>
-#include "object-store/src/thread_safe_reference.hpp"
 #include <sstream>
+
+using SharedAsyncOpenTask = std::shared_ptr<AsyncOpenTask>;
 
 using namespace realm;
 using namespace realm::binding;
 
-using NotifyRealmChangedDelegate = void(void* managed_state_handle);
-using GetNativeSchemaDelegate = void(SchemaForMarshaling schema, void* managed_callback);
-NotifyRealmChangedDelegate* notify_realm_changed = nullptr;
-GetNativeSchemaDelegate* get_native_schema = nullptr;
-
 namespace realm {
 namespace binding {
+    void (*s_open_realm_callback)(void* task_completion_source, ThreadSafeReference* ref, int32_t error_code, const char* message, size_t message_len);
+    void (*s_realm_changed)(void* managed_state_handle);
+    void (*s_get_native_schema)(SchemaForMarshaling schema, void* managed_callback);
+    void (*s_on_binding_context_destructed)(void* managed_handle);
+
     CSharpBindingContext::CSharpBindingContext(void* managed_state_handle) : m_managed_state_handle(managed_state_handle) {}
-    
+
     void CSharpBindingContext::did_change(std::vector<CSharpBindingContext::ObserverState> const& observed, std::vector<void*> const& invalidated, bool version_changed)
     {
-        notify_realm_changed(m_managed_state_handle);
+        s_realm_changed(m_managed_state_handle);
+    }
+
+    CSharpBindingContext::~CSharpBindingContext()
+    {
+        s_on_binding_context_destructed(m_managed_state_handle);
     }
 }
 
@@ -54,20 +63,57 @@ class TestHelper {
 public:
     static bool has_changed(const SharedRealm& realm)
     {
-        return Realm::Internal::get_shared_group(*realm)->has_changed();
+        auto transaction = Realm::Internal::get_transaction_ref(*realm);
+        return Realm::Internal::get_db(*realm)->has_changed(transaction);
     }
 };
+
+Realm::Config get_shared_realm_config(Configuration configuration, SyncConfiguration sync_configuration, SchemaObject* objects, int objects_length, SchemaProperty* properties, uint8_t* encryption_key)
+{
+    Realm::Config config;
+    config.schema_mode = SchemaMode::AdditiveDiscovered;
+
+    if (objects_length > 0) {
+        config.schema = create_schema(objects, objects_length, properties);
+    }
+
+    config.schema_version = configuration.schema_version;
+    config.max_number_of_active_versions = configuration.max_number_of_active_versions;
+
+    std::string realm_url(Utf16StringAccessor(sync_configuration.url, sync_configuration.url_len));
+
+    config.sync_config = std::make_shared<SyncConfig>(*sync_configuration.user, realm_url);
+    config.sync_config->error_handler = handle_session_error;
+    config.sync_config->client_resync_mode = ClientResyncMode::Manual;
+    config.sync_config->stop_policy = sync_configuration.session_stop_policy;
+    config.path = Utf16StringAccessor(configuration.path, configuration.path_len);
+
+    // by definition the key is only allowed to be 64 bytes long, enforced by C# code
+    if (encryption_key) {
+        auto& key = *reinterpret_cast<std::array<char, 64>*>(encryption_key);
+
+        config.encryption_key = std::vector<char>(key.begin(), key.end());
+        config.sync_config->realm_encryption_key = key;
+    }
+
+    config.cache = configuration.enable_cache;
+
+    return config;
+}
 }
 
 extern "C" {
-    
-    
-REALM_EXPORT void shared_realm_install_callbacks(NotifyRealmChangedDelegate realm_changed, GetNativeSchemaDelegate get_schema)
+
+typedef uint32_t realm_table_key;
+
+REALM_EXPORT void shared_realm_install_callbacks(decltype(s_realm_changed) realm_changed, decltype(s_get_native_schema) get_schema, decltype(s_open_realm_callback) open_callback, decltype(s_on_binding_context_destructed) on_binding_context_destructed)
 {
-    notify_realm_changed = realm_changed;
-    get_native_schema = get_schema;
+    s_realm_changed = realm_changed;
+    s_get_native_schema = get_schema;
+    s_open_realm_callback = open_callback;
+    s_on_binding_context_destructed = on_binding_context_destructed;
 }
-    
+
 REALM_EXPORT SharedRealm* shared_realm_open(Configuration configuration, SchemaObject* objects, int objects_length, SchemaProperty* properties, uint8_t* encryption_key, NativeException::Marshallable& ex)
 {
     return handle_errors(ex, [&]() {
@@ -76,7 +122,7 @@ REALM_EXPORT SharedRealm* shared_realm_open(Configuration configuration, SchemaO
         Realm::Config config;
         config.path = pathStr.to_string();
         config.in_memory = configuration.in_memory;
-        config.cache = configuration.enable_cache;
+        config.max_number_of_active_versions = configuration.max_number_of_active_versions;
 
         // by definition the key is only allowed to be 64 bytes long, enforced by C# code
         if (encryption_key )
@@ -87,47 +133,86 @@ REALM_EXPORT SharedRealm* shared_realm_open(Configuration configuration, SchemaO
         } else if (configuration.delete_if_migration_needed) {
             config.schema_mode = SchemaMode::ResetFile;
         }
-        
+
         if (objects_length > 0) {
             config.schema = create_schema(objects, objects_length, properties);
         }
-        
+
         config.schema_version = configuration.schema_version;
 
         if (configuration.managed_migration_handle) {
             config.migration_function = [&configuration](SharedRealm oldRealm, SharedRealm newRealm, Schema schema) {
                 std::vector<SchemaObject> schema_objects;
                 std::vector<SchemaProperty> schema_properties;
-                
+
                 for (auto& object : oldRealm->schema()) {
-                    schema_objects.push_back(SchemaObject::for_marshalling(object, schema_properties));
+                    schema_objects.push_back(SchemaObject::for_marshalling(object, schema_properties, object.is_embedded));
                 }
-                
+
                 SchemaForMarshaling schema_for_marshaling {
                     schema_objects.data(),
                     static_cast<int>(schema_objects.size()),
-                    
+
                     schema_properties.data()
                 };
-                
+
                 if (!configuration.migration_callback(&oldRealm, &newRealm, schema_for_marshaling, oldRealm->schema_version(), configuration.managed_migration_handle)) {
                     throw ManagedExceptionDuringMigration();
                 }
             };
         }
-        
+
         if (configuration.managed_should_compact_delegate) {
             config.should_compact_on_launch_function = [&configuration](uint64_t total_bytes, uint64_t used_bytes) {
                 return configuration.should_compact_callback(configuration.managed_should_compact_delegate, total_bytes, used_bytes);
             };
-            
         }
-        
+
+        config.cache = configuration.enable_cache;
+
         auto realm = Realm::get_shared_realm(config);
         if (!configuration.read_only)
             realm->refresh();
-        
+
         return new SharedRealm{realm};
+    });
+}
+
+REALM_EXPORT SharedAsyncOpenTask* shared_realm_open_with_sync_async(Configuration configuration, SyncConfiguration sync_configuration, SchemaObject* objects, int objects_length, SchemaProperty* properties, uint8_t* encryption_key, void* task_completion_source, NativeException::Marshallable& ex)
+{
+    return handle_errors(ex, [&]() {
+        auto config = get_shared_realm_config(configuration, sync_configuration, objects, objects_length, properties, encryption_key);
+
+        auto task = Realm::get_synchronized_realm(config);
+        task->start([task_completion_source](ThreadSafeReference ref, std::exception_ptr error) {
+            if (error) {
+                try {
+                    std::rethrow_exception(error);
+                }
+                catch (const std::system_error& system_error) {
+                    const std::error_code& ec = system_error.code();
+                    s_open_realm_callback(task_completion_source, nullptr, ec.value(), ec.message().c_str(), ec.message().length());
+                }
+            }
+            else {
+                s_open_realm_callback(task_completion_source, new ThreadSafeReference(std::move(ref)), 0, nullptr, 0);
+            }
+        });
+
+        return new SharedAsyncOpenTask(task);
+    });
+}
+
+REALM_EXPORT SharedRealm* shared_realm_open_with_sync(Configuration configuration, SyncConfiguration sync_configuration, SchemaObject* objects, int objects_length, SchemaProperty* properties, uint8_t* encryption_key, NativeException::Marshallable& ex)
+{
+    return handle_errors(ex, [&]() {
+        auto config = get_shared_realm_config(configuration, sync_configuration, objects, objects_length, properties, encryption_key);
+
+        auto realm = Realm::get_shared_realm(config);
+        if (!configuration.read_only)
+            realm->refresh();
+
+        return new SharedRealm(realm);
     });
 }
 
@@ -146,120 +231,129 @@ REALM_EXPORT void* shared_realm_get_managed_state_handle(SharedRealm& realm, Nat
         if (realm->m_binding_context == nullptr) {
             return nullptr;
         }
-        
+
         auto const& csharp_context = static_cast<CSharpBindingContext*>(realm->m_binding_context.get());
         return csharp_context->get_managed_state_handle();
     });
 }
-    
+
 REALM_EXPORT void shared_realm_destroy(SharedRealm* realm)
 {
     delete realm;
 }
 
-REALM_EXPORT void shared_realm_close_realm(SharedRealm* realm, NativeException::Marshallable& ex)
+REALM_EXPORT void shared_realm_close_realm(SharedRealm& realm, NativeException::Marshallable& ex)
 {
     handle_errors(ex, [&]() {
-        (*realm)->close();
+        realm->close();
     });
 }
 
-REALM_EXPORT Table* shared_realm_get_table(SharedRealm* realm, uint16_t* object_type, size_t object_type_len, NativeException::Marshallable& ex)
+REALM_EXPORT realm_table_key shared_realm_get_table_key(SharedRealm& realm, uint16_t* object_type_buf, size_t object_type_len, NativeException::Marshallable& ex)
 {
     return handle_errors(ex, [&]() {
-        Utf16StringAccessor str(object_type, object_type_len);
-
-        std::string table_name = ObjectStore::table_name_for_object_type(str);
-        auto result = LangBindHelper::get_table((*realm)->read_group(), table_name);
-        if (!result)
-            throw std::logic_error("The table named '" + table_name + "' was not found");
-
-        return result;
+        Utf16StringAccessor object_type(object_type_buf, object_type_len);
+        return ObjectStore::table_for_object_type(realm->read_group(), object_type)->get_key().value;
     });
 }
 
-REALM_EXPORT uint64_t shared_realm_get_schema_version(SharedRealm* realm, NativeException::Marshallable& ex)
+REALM_EXPORT uint64_t shared_realm_get_schema_version(SharedRealm& realm, NativeException::Marshallable& ex)
 {
     return handle_errors(ex, [&]() {
-        return (*realm)->schema_version();
+        return realm->schema_version();
     });
 }
 
-REALM_EXPORT void shared_realm_begin_transaction(SharedRealm* realm, NativeException::Marshallable& ex)
+REALM_EXPORT void shared_realm_begin_transaction(SharedRealm& realm, NativeException::Marshallable& ex)
 {
     handle_errors(ex, [&]() {
-        (*realm)->begin_transaction();
+        realm->begin_transaction();
     });
 }
 
-REALM_EXPORT void shared_realm_commit_transaction(SharedRealm* realm, NativeException::Marshallable& ex)
+REALM_EXPORT void shared_realm_commit_transaction(SharedRealm& realm, NativeException::Marshallable& ex)
 {
     handle_errors(ex, [&]() {
-        (*realm)->commit_transaction();
+        realm->commit_transaction();
     });
 }
 
-REALM_EXPORT void shared_realm_cancel_transaction(SharedRealm* realm, NativeException::Marshallable& ex)
+REALM_EXPORT void shared_realm_cancel_transaction(SharedRealm& realm, NativeException::Marshallable& ex)
 {
     handle_errors(ex, [&]() {
-        (*realm)->cancel_transaction();
+        realm->cancel_transaction();
     });
 }
 
-REALM_EXPORT size_t shared_realm_is_in_transaction(SharedRealm* realm, NativeException::Marshallable& ex)
+REALM_EXPORT bool shared_realm_is_in_transaction(SharedRealm& realm, NativeException::Marshallable& ex)
 {
     return handle_errors(ex, [&]() {
-        return bool_to_size_t((*realm)->is_in_transaction());
+        return realm->is_in_transaction();
     });
 }
 
-REALM_EXPORT size_t shared_realm_is_same_instance(SharedRealm* lhs, SharedRealm* rhs, NativeException::Marshallable& ex)
+REALM_EXPORT bool shared_realm_is_same_instance(SharedRealm& lhs, SharedRealm& rhs, NativeException::Marshallable& ex)
 {
     return handle_errors(ex, [&]() {
-        return *lhs == *rhs;  // just compare raw pointers inside the smart pointers
+        return lhs == rhs;  // just compare raw pointers inside the smart pointers
     });
 }
 
-REALM_EXPORT size_t shared_realm_refresh(SharedRealm* realm, NativeException::Marshallable& ex)
+REALM_EXPORT bool shared_realm_refresh(SharedRealm& realm, NativeException::Marshallable& ex)
 {
     return handle_errors(ex, [&]() {
-        return bool_to_size_t((*realm)->refresh());
+        return realm->refresh();
     });
 }
 
-REALM_EXPORT bool shared_realm_compact(SharedRealm* realm, NativeException::Marshallable& ex)
+REALM_EXPORT bool shared_realm_compact(SharedRealm& realm, NativeException::Marshallable& ex)
 {
     return handle_errors(ex, [&]() -> bool {
-        return (*realm)->compact();
-    });
-}
-    
-REALM_EXPORT Object* shared_realm_resolve_object_reference(SharedRealm* realm, ThreadSafeReference<Object>& reference, NativeException::Marshallable& ex)
-{
-    return handle_errors(ex, [&]() {
-        return new Object((*realm)->resolve_thread_safe_reference(std::move(reference)));
+        return realm->compact();
     });
 }
 
-REALM_EXPORT List* shared_realm_resolve_list_reference(SharedRealm* realm, ThreadSafeReference<List>& reference, NativeException::Marshallable& ex)
+enum class ThreadSafeReferenceType : uint8_t {
+    Object = 0,
+    List,
+    Results,
+    Set,
+    Dictionary
+};
+
+REALM_EXPORT void* shared_realm_resolve_reference(SharedRealm& realm, ThreadSafeReference& reference, ThreadSafeReferenceType type, NativeException::Marshallable& ex)
 {
-    return handle_errors(ex, [&]() {
-        return new List((*realm)->resolve_thread_safe_reference(std::move(reference)));
+    return handle_errors(ex, [&]()-> void*{
+        switch (type)
+        {
+        case ThreadSafeReferenceType::Object:
+            return new Object(reference.resolve<Object>(realm));
+        case ThreadSafeReferenceType::List:
+            return new List(reference.resolve<List>(realm));
+        case ThreadSafeReferenceType::Results:
+            return new Results(reference.resolve<Results>(realm));
+        case ThreadSafeReferenceType::Set:
+            return new object_store::Set(reference.resolve<object_store::Set>(realm));
+        case ThreadSafeReferenceType::Dictionary:
+            return new object_store::Dictionary(reference.resolve<object_store::Dictionary>(realm));
+        default:
+            REALM_UNREACHABLE();
+        }
     });
 }
 
-REALM_EXPORT Results* shared_realm_resolve_query_reference(SharedRealm* realm, ThreadSafeReference<Results>& reference, NativeException::Marshallable& ex)
+REALM_EXPORT SharedRealm* shared_realm_resolve_realm_reference(ThreadSafeReference& reference, NativeException::Marshallable& ex)
 {
     return handle_errors(ex, [&]() {
-        return new Results((*realm)->resolve_thread_safe_reference(std::move(reference)));
+        return new SharedRealm(Realm::get_shared_realm(std::move(reference)));
     });
 }
-    
-REALM_EXPORT void thread_safe_reference_destroy(ThreadSafeReferenceBase* reference)
+
+REALM_EXPORT void thread_safe_reference_destroy(ThreadSafeReference* reference)
 {
     delete reference;
 }
-    
+
 REALM_EXPORT void shared_realm_write_copy(SharedRealm* realm, uint16_t* path, size_t path_len, char* encryption_key, NativeException::Marshallable& ex)
 {
     handle_errors(ex, [&]() {
@@ -269,122 +363,69 @@ REALM_EXPORT void shared_realm_write_copy(SharedRealm* realm, uint16_t* path, si
         realm->get()->write_copy(pathStr, BinaryData(encryption_key, encryption_key ? 64 : 0));
     });
 }
-    
-}
 
-inline const ObjectSchema& find_schema(const SharedRealm& realm, const Table& table)
-{
-    const StringData object_name(ObjectStore::object_type_for_table_name(table.get_name()));
-    return *realm->schema().find(object_name);
-}
-
-namespace realm
-{
-template <>
-size_t Table::set_unique(size_t column_ndx, size_t row_ndx, util::Optional<int64_t> value)
-{
-    if (value) {
-        return set_unique(column_ndx, row_ndx, *value);
-    } else {
-        return set_unique(column_ndx, row_ndx, null());
-    }
-}
-
-template<class KeyType>
-Object* create_object_unique(const SharedRealm& realm, Table& table, const KeyType& key, bool try_update, bool& is_new)
-{
-    realm->verify_in_write();
-    const ObjectSchema& object_schema(find_schema(realm, table));
-
-    const Property& primary_key_property = *object_schema.primary_key_property();
-    size_t column_index = primary_key_property.table_column;
-
-    size_t row_index = table.find_first(column_index, key);
-
-    if (row_index == realm::not_found) {
-        is_new = true;
-#if REALM_ENABLE_SYNC
-        row_index = sync::create_object_with_primary_key(realm->read_group(), table, key);
-#else
-        row_index = table.add_empty_row();
-        table.set_unique(column_index, row_index, key);
-#endif
-    } else if (!try_update) {
-        std::ostringstream string_builder;
-        string_builder << key;
-        throw SetDuplicatePrimaryKeyValueException(object_schema.name,
-                                                   primary_key_property.name,
-                                                   string_builder.str());
-    } else {
-        is_new = false;
-    }
-
-    auto result = new Object(realm, object_schema, table.get(row_index));
-    
-#if REALM_ENABLE_SYNC
-    if (realm->is_partial() && object_schema.name == "__User") {
-        result->ensure_user_in_everyone_role();
-        result->ensure_private_role_exists_for_user();
-    }
-#endif
-    
-    return result;
-}
-
-extern "C" {
-
-REALM_EXPORT Object* shared_realm_create_object(SharedRealm* realm, Table* table, NativeException::Marshallable& ex)
+REALM_EXPORT Object* shared_realm_create_object(SharedRealm& realm, TableKey table_key, NativeException::Marshallable& ex)
 {
     return handle_errors(ex, [&]() {
-        (*realm)->verify_in_write();
-        
-#if REALM_ENABLE_SYNC
-        size_t row_index = sync::create_object((*realm)->read_group(), *table);
-#else
-        size_t row_index = table->add_empty_row();
-#endif // REALM_ENABLE_SYNC
+        realm->verify_in_write();
 
-        const std::string object_name(ObjectStore::object_type_for_table_name(table->get_name()));
-        auto& object_schema = *realm->get()->schema().find(object_name);
-        
-        return new Object(*realm, object_schema, table->get(row_index));
+        return new Object(realm, get_table(realm, table_key)->create_object());
     });
 }
 
-REALM_EXPORT Object* shared_realm_create_object_int_unique(const SharedRealm& realm, Table& table, int64_t key, bool has_value, bool is_nullable, bool try_update, bool& is_new, NativeException::Marshallable& ex)
+REALM_EXPORT Object* shared_realm_create_object_unique(const SharedRealm& realm, TableKey table_key, realm_value_t primitive, bool try_update, bool& is_new, NativeException::Marshallable& ex)
 {
     return handle_errors(ex, [&]() {
-        if (is_nullable) {
-            return create_object_unique(realm, table, has_value ? util::some<int64_t>(key) : null(), try_update, is_new);
-        } else {
-            return create_object_unique(realm, table, key, try_update, is_new);
+        realm->verify_in_write();
+
+        const TableRef table = get_table(realm, table_key);
+        const ObjectSchema& object_schema = *realm->schema().find(table_key);
+        const Property& primary_key_property = *object_schema.primary_key_property();
+
+        if (!primary_key_property.type_is_nullable() && primitive.is_null()) {
+            throw NotNullableException(object_schema.name, primary_key_property.name);
         }
+
+        if (!primitive.is_null() && to_capi(primary_key_property.type) != primitive.type) {
+            throw PropertyTypeMismatchException(object_schema.name, primary_key_property.name, to_string(primary_key_property.type), to_string(primitive.type));
+        }
+
+        auto val = from_capi(primitive);
+        auto obj_key = table->find_first(primary_key_property.column_key, val);
+
+        Obj obj;
+        if (!obj_key) {
+            is_new = true;
+            obj = table->create_object_with_primary_key(val);
+        }
+        else if (!try_update) {
+            std::ostringstream string_builder;
+            string_builder << val;
+            throw SetDuplicatePrimaryKeyValueException(object_schema.name,
+                primary_key_property.name,
+                string_builder.str());
+        }
+        else {
+            obj = table->get_object(obj_key);
+            is_new = false;
+        }
+
+        return new Object(realm, object_schema, obj);
     });
 }
 
-REALM_EXPORT Object* shared_realm_create_object_string_unique(const SharedRealm& realm, Table& table, uint16_t* key_buf, size_t key_len, bool try_update, bool& is_new, NativeException::Marshallable& ex)
-{
-    return handle_errors(ex, [&]() {
-        if (key_buf == nullptr) {
-            return create_object_unique(realm, table, StringData(), try_update, is_new);
-        }
-        
-        Utf16StringAccessor key(key_buf, key_len);
-        return create_object_unique(realm, table, StringData(key), try_update, is_new);
-    });
-}
 
 REALM_EXPORT void shared_realm_get_schema(const SharedRealm& realm, void* managed_callback, NativeException::Marshallable& ex)
 {
     handle_errors(ex, [&]() {
         std::vector<SchemaObject> schema_objects;
         std::vector<SchemaProperty> schema_properties;
-        
+
         for (auto& object : realm->schema()) {
-            schema_objects.push_back(SchemaObject::for_marshalling(object, schema_properties));
+            schema_objects.push_back(SchemaObject::for_marshalling(object, schema_properties, object.is_embedded));
         }
-        
-        get_native_schema(SchemaForMarshaling {
+
+        s_get_native_schema(SchemaForMarshaling {
             schema_objects.data(),
             static_cast<int>(schema_objects.size()),
             schema_properties.data()
@@ -397,5 +438,60 @@ REALM_EXPORT bool shared_realm_has_changed(const SharedRealm& realm)
     return TestHelper::has_changed(realm);
 }
 
+REALM_EXPORT bool shared_realm_get_is_frozen(const SharedRealm& realm, NativeException::Marshallable& ex)
+{
+    return handle_errors(ex, [&]() {
+        return realm->is_frozen();
+    });
 }
+
+REALM_EXPORT SharedRealm* shared_realm_freeze(const SharedRealm& realm, NativeException::Marshallable& ex)
+{
+    return handle_errors(ex, [&]() {
+        auto frozen_realm = realm->freeze();
+        return new SharedRealm{ frozen_realm };
+    });
+}
+
+REALM_EXPORT Object* shared_realm_get_object_for_primary_key(SharedRealm& realm, TableKey table_key, realm_value_t primitive, NativeException::Marshallable& ex)
+{
+    return handle_errors(ex, [&]() -> Object* {
+        realm->verify_thread();
+
+        const TableRef table = get_table(realm, table_key);
+        const ObjectSchema& object_schema = *realm->schema().find(table_key); 
+        if (object_schema.primary_key.empty()) {
+            const std::string name(ObjectStore::object_type_for_table_name(table->get_name()));
+            throw MissingPrimaryKeyException(name);
+        }
+
+        const Property& primary_key_property = *object_schema.primary_key_property();
+        if (!primary_key_property.type_is_nullable() && primitive.is_null()) {
+            return nullptr;
+        }
+
+        if (!primitive.is_null() && to_capi(primary_key_property.type) != primitive.type) {
+            throw PropertyTypeMismatchException(object_schema.name, primary_key_property.name, to_string(primary_key_property.type), to_string(primitive.type));
+        }
+
+        const ColKey column_key = object_schema.primary_key_property()->column_key;
+        const ObjKey obj_key = table->find_first(column_key, from_capi(primitive));
+        if (!obj_key) {
+            return nullptr;
+        }
+
+        return new Object(realm, object_schema, table->get_object(obj_key));
+    });
+}
+
+REALM_EXPORT Results* shared_realm_create_results(SharedRealm& realm, TableKey table_key, NativeException::Marshallable& ex)
+{
+    return handle_errors(ex, [&]() {
+        realm->verify_thread();
+
+        const TableRef table = get_table(realm, table_key);
+        return new Results(realm, table);
+    });
+}
+
 }

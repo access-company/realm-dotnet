@@ -17,7 +17,6 @@
 ////////////////////////////////////////////////////////////////////////////
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Text;
 using Realms.Exceptions;
@@ -25,7 +24,6 @@ using Realms.Exceptions;
 namespace Realms
 {
     [StructLayout(LayoutKind.Sequential)]
-    [SuppressMessage("StyleCop.CSharp.NamingRules", "SA1307:AccessibleFieldsMustBeginWithUpperCaseLetter")]
     internal unsafe struct NativeException
     {
         public RealmExceptionCodes type;
@@ -55,6 +53,17 @@ namespace Realms
             }
 
             throw Convert(overrider);
+        }
+
+        internal void ThrowIfNecessary(GCHandle handleToFree)
+        {
+            if (type == RealmExceptionCodes.NoError)
+            {
+                return;
+            }
+
+            handleToFree.Free();
+            throw Convert();
         }
     }
 }

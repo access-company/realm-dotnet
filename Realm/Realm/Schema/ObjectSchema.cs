@@ -49,7 +49,9 @@ namespace Realms.Schema
 
         internal Property? PrimaryKeyProperty { get; }
 
-        internal TypeInfo Type;
+        internal TypeInfo Type { get; private set; }
+
+        internal bool IsEmbedded { get; private set; }
 
         internal IEnumerable<string> PropertyNames => _properties.Keys;
 
@@ -84,25 +86,33 @@ namespace Realms.Schema
         /// <param name="property"><see cref="Property"/> returned only if found matching Name.</param>
         public bool TryFindProperty(string name, out Property property) => _properties.TryGetValue(name, out property);
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Returns an enumerator that iterates through the collection.
+        /// </summary>
+        /// <returns>An enumerator that can be used to iterate through the collection.</returns>
         public IEnumerator<Property> GetEnumerator() => _properties.Values.GetEnumerator();
 
+        /// <summary>
+        /// Returns an enumerator that iterates through the collection.
+        /// </summary>
+        /// <returns>An enumerator that can be used to iterate through the collection.</returns>
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
         /// <summary>
-        /// Creates a schema describing a <see cref="RealmObject"/> subclass in terms of its persisted members.
+        /// Creates a schema describing a <see cref="RealmObject"/> or <see cref="EmbeddedObject"/> subclass in terms of its persisted members.
         /// </summary>
         /// <exception cref="ArgumentException">
-        /// Thrown if no class Type is provided or if it doesn't descend directly from <see cref="RealmObject"/>.
+        /// Thrown if no class Type is provided or if it doesn't descend directly from <see cref="RealmObject"/>/<see cref="EmbeddedObject"/>.
         /// </exception>
         /// <returns>An <see cref="ObjectSchema"/> describing the specified Type.</returns>
-        /// <param name="type">Type of a <see cref="RealmObject"/> descendant for which you want a schema.</param>
+        /// <param name="type">Type of a <see cref="RealmObject"/>/<see cref="EmbeddedObject"/> descendant for which you want a schema.</param>
         public static ObjectSchema FromType(TypeInfo type)
         {
             Argument.NotNull(type, nameof(type));
-            Argument.Ensure(type.BaseType == typeof(RealmObject), $"The class {type.FullName} must descend directly from RealmObject", nameof(type));
 
-            var builder = new Builder(type.GetMappedOrOriginalName());
+            Argument.Ensure(type.IsRealmObject() || type.IsEmbeddedObject(), $"The class {type.FullName} must descend directly from RealmObject", nameof(type));
+
+            var builder = new Builder(type.GetMappedOrOriginalName(), type.IsEmbeddedObject());
             foreach (var property in type.DeclaredProperties.Where(p => !p.IsStatic() && p.HasCustomAttribute<WovenPropertyAttribute>()))
             {
                 var isPrimaryKey = property.HasCustomAttribute<PrimaryKeyAttribute>();
@@ -147,7 +157,9 @@ namespace Realms.Schema
         {
             public string Name { get; }
 
-            public Builder(string name)
+            private readonly bool _isEmbedded;
+
+            public Builder(string name, bool isEmbedded)
             {
                 if (string.IsNullOrEmpty(name))
                 {
@@ -155,6 +167,7 @@ namespace Realms.Schema
                 }
 
                 Name = name;
+                _isEmbedded = isEmbedded;
             }
 
             public ObjectSchema Build()
@@ -162,10 +175,13 @@ namespace Realms.Schema
                 if (Count == 0)
                 {
                     throw new InvalidOperationException(
-                        $"No properties in {Name}, has linker stripped it? See https://realm.io/docs/xamarin/latest/#linker-stripped-schema");
+                        $"No properties in {Name}, has linker stripped it? See https://thereIsntSuchDocYet");
                 }
 
-                return new ObjectSchema(Name, this.ToDictionary(p => p.Name));
+                return new ObjectSchema(Name, this.ToDictionary(p => p.Name))
+                {
+                    IsEmbedded = _isEmbedded
+                };
             }
         }
     }

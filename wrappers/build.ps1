@@ -18,34 +18,47 @@ param(
     [ValidateSet('Win32', 'x64', 'ARM')]
     [string[]]$Platforms = ('Win32'),
 
-    [switch]$EnableSync,
-
     [ValidateSet('Windows', 'WindowsStore')]
     [Parameter(Position=0)]
-    [string]$Target = 'Windows'
+    [string]$Target = 'Windows',
+
+    [string]$Toolchain = 'c:\\src\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake',
+
+    [Switch]$Incremental,
+
+    [Switch]$EnableLTO
 )
 
 Push-Location $PSScriptRoot
 
 if (!(Get-Module -ListAvailable -Name VSSetup)) {
+    Install-PackageProvider NuGet -Scope CurrentUser -Force
+    Import-PackageProvider NuGet -Force
+    Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
     Install-Module -Name VSSetup -Scope CurrentUser -Force
 }
 
-$vs = Get-VSSetupInstance | Select-VSSetupInstance -Latest -Require Microsoft.VisualStudio.Component.VC.CMake.Project
+$vs = Get-VSSetupInstance | Select-VSSetupInstance -Product * -Latest -Require Microsoft.VisualStudio.Component.VC.CMake.Project
+
+# Work-around for Visual Studio 16.0 and CMake 3.13
+$Env:path += ";$($vs.InstallationPath)\MSBuild\Current\Bin"
+
 $cmake = Join-Path $vs.InstallationPath -ChildPath "Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
-$cmakeArgs = "-DCMAKE_BUILD_TYPE=$Configuration",  "-DCMAKE_SYSTEM_NAME=$Target", "-DCMAKE_INSTALL_PREFIX=$PSScriptRoot\build", "-DCMAKE_TOOLCHAIN_FILE=c:\\src\\vcpkg\\scripts\\buildsystems\\vcpkg.cmake"
+$cmakeArgs = "-DCMAKE_GENERATOR_INSTANCE=$($vs.InstallationPath)", "-DCMAKE_BUILD_TYPE=$Configuration", "-DCMAKE_SYSTEM_NAME=$Target", "-DCMAKE_INSTALL_PREFIX=$PSScriptRoot\build", "-DCMAKE_TOOLCHAIN_FILE=$Toolchain"
 
 if ($Target -eq 'WindowsStore') {
     $cmakeArgs += "-DCMAKE_SYSTEM_VERSION='10.0'"
+} else {
+    $cmakeArgs += "-DCMAKE_SYSTEM_VERSION='8.1'", "-DCMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION='8.1'"
 }
 
-if ($EnableSync) {
-    $cmakeArgs += "-DREALM_ENABLE_SYNC=ON"
+if ($EnableLTO) {
+    $cmakeArgs += "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON"
 }
 
 function triplet([string]$target, [string]$platform) {
     $arch = $platform.ToLower()
-    if ($arch -eq 'win32') { 
+    if ($arch -eq 'win32') {
         $arch = 'x86'
     }
 
@@ -58,10 +71,15 @@ function triplet([string]$target, [string]$platform) {
 }
 
 foreach ($platform in $Platforms) {
-    Remove-Item .\cmake\$Target\$Configuration-$platform -Recurse -Force -ErrorAction Ignore
+    if (-Not $Incremental) {
+        Remove-Item .\cmake\$Target\$Configuration-$platform -Recurse -Force -ErrorAction Ignore
+    }
     New-Item .\cmake\$Target\$Configuration-$platform -ItemType "Directory" | Out-Null
     Push-Location .\cmake\$Target\$Configuration-$platform
-    & $cmake $PSScriptRoot $cmakeArgs -DCMAKE_GENERATOR_PLATFORM="$platform" -DVCPKG_TARGET_TRIPLET="$(triplet -target $Target -platform $platform)"
+    if (-Not $Incremental) {
+        & $cmake $PSScriptRoot $cmakeArgs -DCMAKE_GENERATOR_PLATFORM="$platform" -DVCPKG_TARGET_TRIPLET="$(triplet -target $Target -platform $platform)"
+    }
+
     & $cmake --build . --target install --config $Configuration
     Pop-Location
 }

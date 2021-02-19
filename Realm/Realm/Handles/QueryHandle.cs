@@ -1,4 +1,4 @@
-﻿////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
 //
 // Copyright 2016 Realm Inc.
 //
@@ -17,7 +17,6 @@
 ////////////////////////////////////////////////////////////////////////////
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Realms.Native;
 
@@ -29,159 +28,62 @@ namespace Realms
     // so these handles always represent a qeury object that should be released when not used anymore
     // the C# binding methods on query simply return self to add the . nottation again
     // A query will be a child of whatever root its creator has as root (queries are usually created by tableviews and tables)
-    [SuppressMessage("StyleCop.CSharp.DocumentationRules", "SA1611:ElementParametersMustBeDocumented")]
     internal class QueryHandle : RealmHandle
     {
         // This is a delegate type meant to represent one of the "query operator" methods such as float_less and bool_equal
-        internal delegate void Operation<T>(QueryHandle queryPtr, IntPtr columnIndex, T value);
+        internal delegate void Operation<T>(QueryHandle queryPtr, SharedRealmHandle realm, IntPtr propertyIndex, T value);
 
-        [SuppressMessage("StyleCop.CSharp.ReadabilityRules", "SA1121:UseBuiltInTypeAlias")]
         private static class NativeMethods
         {
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_binary_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void binary_equal(QueryHandle queryPtr, IntPtr columnIndex, IntPtr buffer, IntPtr bufferLength, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_binary_not_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void binary_not_equal(QueryHandle queryPtr, IntPtr columnIndex, IntPtr buffer, IntPtr bufferLength, out NativeException ex);
+#pragma warning disable IDE1006 // Naming Styles
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_string_contains", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void string_contains(QueryHandle queryPtr, IntPtr columnIndex,
-                        [MarshalAs(UnmanagedType.LPWStr)] string value, IntPtr valueLen, [MarshalAs(UnmanagedType.I1)] bool caseSensitive, out NativeException ex);
+            public static extern void string_contains(QueryHandle queryPtr, SharedRealmHandle realm, IntPtr property_ndx,
+                PrimitiveValue primitive, [MarshalAs(UnmanagedType.U1)] bool caseSensitive, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_string_starts_with", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void string_starts_with(QueryHandle queryPtr, IntPtr columnIndex,
-                        [MarshalAs(UnmanagedType.LPWStr)] string value, IntPtr valueLen, [MarshalAs(UnmanagedType.I1)] bool caseSensitive, out NativeException ex);
+            public static extern void string_starts_with(QueryHandle queryPtr, SharedRealmHandle realm, IntPtr property_ndx,
+                        PrimitiveValue primitive, [MarshalAs(UnmanagedType.U1)] bool caseSensitive, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_string_ends_with", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void string_ends_with(QueryHandle queryPtr, IntPtr columnIndex,
-                        [MarshalAs(UnmanagedType.LPWStr)] string value, IntPtr valueLen, [MarshalAs(UnmanagedType.I1)] bool caseSensitive, out NativeException ex);
+            public static extern void string_ends_with(QueryHandle queryPtr, SharedRealmHandle realm, IntPtr property_ndx,
+                        PrimitiveValue primitive, [MarshalAs(UnmanagedType.U1)] bool caseSensitive, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_string_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void string_equal(QueryHandle queryPtr, IntPtr columnIndex,
-                        [MarshalAs(UnmanagedType.LPWStr)] string value, IntPtr valueLen, [MarshalAs(UnmanagedType.I1)] bool caseSensitive, out NativeException ex);
+            public static extern void string_equal(QueryHandle queryPtr, SharedRealmHandle realm, IntPtr property_ndx,
+                        PrimitiveValue primitive, [MarshalAs(UnmanagedType.U1)] bool caseSensitive, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_string_not_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void string_not_equal(QueryHandle queryPtr, IntPtr columnIndex,
-                        [MarshalAs(UnmanagedType.LPWStr)] string value, IntPtr valueLen, [MarshalAs(UnmanagedType.I1)] bool caseSensitive, out NativeException ex);
+            public static extern void string_not_equal(QueryHandle queryPtr, SharedRealmHandle realm, IntPtr property_ndx,
+                        PrimitiveValue primitive, [MarshalAs(UnmanagedType.U1)] bool caseSensitive, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_string_like", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void string_like(QueryHandle queryPtr, IntPtr columnIndex,
-                        [MarshalAs(UnmanagedType.LPWStr)] string value, IntPtr valueLen, [MarshalAs(UnmanagedType.I1)] bool caseSensitive, out NativeException ex);
+            public static extern void string_like(QueryHandle queryPtr, SharedRealmHandle realm, IntPtr property_ndx,
+                        PrimitiveValue primitive, [MarshalAs(UnmanagedType.U1)] bool caseSensitive, out NativeException ex);
 
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_bool_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void bool_equal(QueryHandle queryPtr, IntPtr columnIndex, IntPtr value, out NativeException ex);
+            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_primitive_equal", CallingConvention = CallingConvention.Cdecl)]
+            public static extern void primitive_equal(QueryHandle queryPtr, SharedRealmHandle realm, IntPtr property_ndx, PrimitiveValue primitive, out NativeException ex);
 
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_bool_not_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void bool_not_equal(QueryHandle queryPtr, IntPtr columnIndex, IntPtr value, out NativeException ex);
+            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_primitive_not_equal", CallingConvention = CallingConvention.Cdecl)]
+            public static extern void primitive_not_equal(QueryHandle queryPtr, SharedRealmHandle realm, IntPtr property_ndx, PrimitiveValue primitive, out NativeException ex);
 
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_int_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void int_equal(QueryHandle queryPtr, IntPtr columnIndex, IntPtr value, out NativeException ex);
+            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_primitive_less", CallingConvention = CallingConvention.Cdecl)]
+            public static extern void primitive_less(QueryHandle queryPtr, SharedRealmHandle realm, IntPtr property_ndx, PrimitiveValue primitive, out NativeException ex);
 
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_int_not_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void int_not_equal(QueryHandle queryPtr, IntPtr columnIndex, IntPtr value, out NativeException ex);
+            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_primitive_less_equal", CallingConvention = CallingConvention.Cdecl)]
+            public static extern void primitive_less_equal(QueryHandle queryPtr, SharedRealmHandle realm, IntPtr property_ndx, PrimitiveValue primitive, out NativeException ex);
 
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_int_less", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void int_less(QueryHandle queryPtr, IntPtr columnIndex, IntPtr value, out NativeException ex);
+            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_primitive_greater", CallingConvention = CallingConvention.Cdecl)]
+            public static extern void primitive_greater(QueryHandle queryPtr, SharedRealmHandle realm, IntPtr property_ndx, PrimitiveValue primitive, out NativeException ex);
 
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_int_less_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void int_less_equal(QueryHandle queryPtr, IntPtr columnIndex, IntPtr value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_int_greater", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void int_greater(QueryHandle queryPtr, IntPtr columnIndex, IntPtr value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_int_greater_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void int_greater_equal(QueryHandle queryPtr, IntPtr columnIndex, IntPtr value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_long_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void long_equal(QueryHandle queryPtr, IntPtr columnIndex, Int64 value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_long_not_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void long_not_equal(QueryHandle queryPtr, IntPtr columnIndex, Int64 value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_long_less", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void long_less(QueryHandle queryPtr, IntPtr columnIndex, Int64 value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_long_less_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void long_less_equal(QueryHandle queryPtr, IntPtr columnIndex, Int64 value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_long_greater", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void long_greater(QueryHandle queryPtr, IntPtr columnIndex, Int64 value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_long_greater_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void long_greater_equal(QueryHandle queryPtr, IntPtr columnIndex, Int64 value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_float_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void float_equal(QueryHandle queryPtr, IntPtr columnIndex, Single value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_float_not_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void float_not_equal(QueryHandle queryPtr, IntPtr columnIndex, Single value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_float_less", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void float_less(QueryHandle queryPtr, IntPtr columnIndex, Single value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_float_less_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void float_less_equal(QueryHandle queryPtr, IntPtr columnIndex, Single value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_float_greater", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void float_greater(QueryHandle queryPtr, IntPtr columnIndex, Single value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_float_greater_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void float_greater_equal(QueryHandle queryPtr, IntPtr columnIndex, Single value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_double_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void double_equal(QueryHandle queryPtr, IntPtr columnIndex, Double value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_double_not_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void double_not_equal(QueryHandle queryPtr, IntPtr columnIndex, Double value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_double_less", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void double_less(QueryHandle queryPtr, IntPtr columnIndex, Double value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_double_less_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void double_less_equal(QueryHandle queryPtr, IntPtr columnIndex, Double value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_double_greater", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void double_greater(QueryHandle queryPtr, IntPtr columnIndex, Double value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_double_greater_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void double_greater_equal(QueryHandle queryPtr, IntPtr columnIndex, Double value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_timestamp_ticks_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void timestamp_ticks_equal(QueryHandle queryPtr, IntPtr columnIndex, Int64 value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_timestamp_ticks_not_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void timestamp_ticks_not_equal(QueryHandle queryPtr, IntPtr columnIndex, Int64 value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_timestamp_ticks_less", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void timestamp_ticks_less(QueryHandle queryPtr, IntPtr columnIndex, Int64 value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_timestamp_ticks_less_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void timestamp_ticks_less_equal(QueryHandle queryPtr, IntPtr columnIndex, Int64 value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_timestamp_ticks_greater", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void timestamp_ticks_greater(QueryHandle queryPtr, IntPtr columnIndex, Int64 value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_timestamp_ticks_greater_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void timestamp_ticks_greater_equal(QueryHandle queryPtr, IntPtr columnIndex, Int64 value, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_object_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void query_object_equal(QueryHandle queryPtr, IntPtr columnIndex, ObjectHandle objectHandle, out NativeException ex);
+            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_primitive_greater_equal", CallingConvention = CallingConvention.Cdecl)]
+            public static extern void primitive_greater_equal(QueryHandle queryPtr, SharedRealmHandle realm, IntPtr property_ndx, PrimitiveValue primitive, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_null_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void null_equal(QueryHandle queryPtr, IntPtr columnIndex, out NativeException ex);
+            public static extern void null_equal(QueryHandle queryPtr, SharedRealmHandle realm, IntPtr property_ndx, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_null_not_equal", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void null_not_equal(QueryHandle queryPtr, IntPtr columnIndex, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_find", CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr findDirect(QueryHandle queryHandle, IntPtr beginAtIndex, SharedRealmHandle realmHandle, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_find_next", CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr findNext(QueryHandle queryHandle, ObjectHandle previousObject, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_get_column_index", CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr get_column_index(QueryHandle queryPtr,
-                        [MarshalAs(UnmanagedType.LPWStr)] string columnName, IntPtr columnNameLen, out NativeException ex);
+            public static extern void null_not_equal(QueryHandle queryPtr, SharedRealmHandle realm, IntPtr property_ndx, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_not", CallingConvention = CallingConvention.Cdecl)]
             public static extern void not(QueryHandle queryHandle, out NativeException ex);
@@ -202,13 +104,9 @@ namespace Realms
             public static extern IntPtr count(QueryHandle QueryHandle, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_create_results", CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr create_results(QueryHandle queryPtr, SharedRealmHandle sharedRealm, out NativeException ex);
+            public static extern IntPtr create_results(QueryHandle queryPtr, SharedRealmHandle sharedRealm, SortDescriptorHandle sortDescriptor, out NativeException ex);
 
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "query_create_sorted_results", CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr create_sorted_results(QueryHandle queryPtr, SharedRealmHandle sharedRealm, TableHandle tablePtr,
-                [MarshalAs(UnmanagedType.LPArray), In]SortDescriptorBuilder.Clause.Marshalable[] sortClauses, IntPtr clauseCount,
-                [MarshalAs(UnmanagedType.LPArray), In]IntPtr[] flattenedPropertyIndices,
-                out NativeException ex);
+#pragma warning restore IDE1006 // Naming Styles
         }
 
         public QueryHandle(RealmHandle root, IntPtr handle) : base(root, handle)
@@ -220,333 +118,136 @@ namespace Realms
             NativeMethods.destroy(handle);
         }
 
-        public NumericQueryMethods NumericEqualMethods => new NumericQueryMethods(IntEqual, LongEqual, FloatEqual, DoubleEqual);
-
-        public NumericQueryMethods NumericNotEqualMethods => new NumericQueryMethods(IntNotEqual, LongNotEqual, FloatNotEqual, DoubleNotEqual);
-
-        public NumericQueryMethods NumericLessMethods => new NumericQueryMethods(IntLess, LongLess, FloatLess, DoubleLess);
-
-        public NumericQueryMethods NumericLessEqualMethods => new NumericQueryMethods(IntLessEqual, LongLessEqual, FloatLessEqual, DoubleLessEqual);
-
-        public NumericQueryMethods NumericGreaterMethods => new NumericQueryMethods(IntGreater, LongGreater, FloatGreater, DoubleGreater);
-
-        public NumericQueryMethods NumericGreaterEqualMethods => new NumericQueryMethods(IntGreaterEqual, LongGreaterEqual, FloatGreaterEqual, DoubleGreaterEqual);
-
-        public void BinaryEqual(IntPtr columnIndex, IntPtr buffer, IntPtr bufferLength)
-        {
-            NativeMethods.binary_equal(this, columnIndex, buffer, bufferLength, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void BinaryNotEqual(IntPtr columnIndex, IntPtr buffer, IntPtr bufferLength)
-        {
-            NativeMethods.binary_not_equal(this, columnIndex, buffer, bufferLength, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
         /// <summary>
         /// If the user hasn't specified it, should be caseSensitive=true.
         /// </summary>
-        public void StringContains(IntPtr columnIndex, string value, bool caseSensitive)
+        public void StringContains(SharedRealmHandle realm, IntPtr propertyIndex, in RealmValue value, bool caseSensitive)
         {
-            NativeMethods.string_contains(this, columnIndex, value, (IntPtr)value.Length, caseSensitive, out var nativeException);
+            var (primitive, handles) = value.ToNative();
+            NativeMethods.string_contains(this, realm, propertyIndex, primitive, caseSensitive, out var nativeException);
+            handles?.Dispose();
             nativeException.ThrowIfNecessary();
         }
 
         /// <summary>
         /// If the user hasn't specified it, should be <c>caseSensitive = true</c>.
         /// </summary>
-        public void StringStartsWith(IntPtr columnIndex, string value, bool caseSensitive)
+        public void StringStartsWith(SharedRealmHandle realm, IntPtr propertyIndex, in RealmValue value, bool caseSensitive)
         {
-            NativeMethods.string_starts_with(this, columnIndex, value, (IntPtr)value.Length, caseSensitive, out var nativeException);
+            var (primitive, handles) = value.ToNative();
+            NativeMethods.string_starts_with(this, realm, propertyIndex, primitive, caseSensitive, out var nativeException);
+            handles?.Dispose();
             nativeException.ThrowIfNecessary();
         }
 
         /// <summary>
         /// If the user hasn't specified it, should be <c>caseSensitive = true</c>.
         /// </summary>
-        public void StringEndsWith(IntPtr columnIndex, string value, bool caseSensitive)
+        public void StringEndsWith(SharedRealmHandle realm, IntPtr propertyIndex, in RealmValue value, bool caseSensitive)
         {
-            NativeMethods.string_ends_with(this, columnIndex, value, (IntPtr)value.Length, caseSensitive, out var nativeException);
+            var (primitive, handles) = value.ToNative();
+            NativeMethods.string_ends_with(this, realm, propertyIndex, primitive, caseSensitive, out var nativeException);
+            handles?.Dispose();
             nativeException.ThrowIfNecessary();
         }
 
         /// <summary>
         /// If the user hasn't specified it, should be <c>caseSensitive = true</c>.
         /// </summary>
-        public void StringEqual(IntPtr columnIndex, string value, bool caseSensitive)
+        public void StringEqual(SharedRealmHandle realm, IntPtr propertyIndex, in RealmValue value, bool caseSensitive)
         {
-            NativeMethods.string_equal(this, columnIndex, value, (IntPtr)value.Length, caseSensitive, out var nativeException);
+            var (primitive, handles) = value.ToNative();
+            NativeMethods.string_equal(this, realm, propertyIndex, primitive, caseSensitive, out var nativeException);
+            handles?.Dispose();
             nativeException.ThrowIfNecessary();
         }
 
         /// <summary>
         /// If the user hasn't specified it, should be <c>caseSensitive = true</c>.
         /// </summary>
-        public void StringNotEqual(IntPtr columnIndex, string value, bool caseSensitive)
+        public void StringNotEqual(SharedRealmHandle realm, IntPtr propertyIndex, in RealmValue value, bool caseSensitive)
         {
-            NativeMethods.string_not_equal(this, columnIndex, value, (IntPtr)value.Length, caseSensitive, out var nativeException);
+            var (primitive, handles) = value.ToNative();
+            NativeMethods.string_not_equal(this, realm, propertyIndex, primitive, caseSensitive, out var nativeException);
+            handles?.Dispose();
             nativeException.ThrowIfNecessary();
         }
 
-        public void StringLike(IntPtr columnIndex, string value, bool caseSensitive)
+        public void StringLike(SharedRealmHandle realm, IntPtr propertyIndex, in RealmValue value, bool caseSensitive)
         {
             NativeException nativeException;
-            if (value == null)
+            if (value.Type == RealmValueType.Null)
             {
-                NativeMethods.null_equal(this, columnIndex, out nativeException);
+                NativeMethods.null_equal(this, realm, propertyIndex, out nativeException);
             }
             else
             {
-                NativeMethods.string_like(this, columnIndex, value, (IntPtr)value.Length, caseSensitive, out nativeException);
-            }
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void BoolEqual(IntPtr columnIndex, bool value)
-        {
-            NativeMethods.bool_equal(this, columnIndex, MarshalHelpers.BoolToIntPtr(value), out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void BoolNotEqual(IntPtr columnIndex, bool value)
-        {
-            NativeMethods.bool_not_equal(this, columnIndex, MarshalHelpers.BoolToIntPtr(value), out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void IntEqual(IntPtr columnIndex, int value)
-        {
-            NativeMethods.int_equal(this, columnIndex, (IntPtr)value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void IntNotEqual(IntPtr columnIndex, int value)
-        {
-            NativeMethods.int_not_equal(this, columnIndex, (IntPtr)value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void IntLess(IntPtr columnIndex, int value)
-        {
-            NativeMethods.int_less(this, columnIndex, (IntPtr)value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void IntLessEqual(IntPtr columnIndex, int value)
-        {
-            NativeMethods.int_less_equal(this, columnIndex, (IntPtr)value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void IntGreater(IntPtr columnIndex, int value)
-        {
-            NativeMethods.int_greater(this, columnIndex, (IntPtr)value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void IntGreaterEqual(IntPtr columnIndex, int value)
-        {
-            NativeMethods.int_greater_equal(this, columnIndex, (IntPtr)value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void LongEqual(IntPtr columnIndex, long value)
-        {
-            NativeMethods.long_equal(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void LongNotEqual(IntPtr columnIndex, long value)
-        {
-            NativeMethods.long_not_equal(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void LongLess(IntPtr columnIndex, long value)
-        {
-            NativeMethods.long_less(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void LongLessEqual(IntPtr columnIndex, long value)
-        {
-            NativeMethods.long_less_equal(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void LongGreater(IntPtr columnIndex, long value)
-        {
-            NativeMethods.long_greater(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void LongGreaterEqual(IntPtr columnIndex, long value)
-        {
-            NativeMethods.long_greater_equal(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void FloatEqual(IntPtr columnIndex, float value)
-        {
-            NativeMethods.float_equal(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void FloatNotEqual(IntPtr columnIndex, float value)
-        {
-            NativeMethods.float_not_equal(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void FloatLess(IntPtr columnIndex, float value)
-        {
-            NativeMethods.float_less(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void FloatLessEqual(IntPtr columnIndex, float value)
-        {
-            NativeMethods.float_less_equal(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void FloatGreater(IntPtr columnIndex, float value)
-        {
-            NativeMethods.float_greater(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void FloatGreaterEqual(IntPtr columnIndex, float value)
-        {
-            NativeMethods.float_greater_equal(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void DoubleEqual(IntPtr columnIndex, double value)
-        {
-            NativeMethods.double_equal(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void DoubleNotEqual(IntPtr columnIndex, double value)
-        {
-            NativeMethods.double_not_equal(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void DoubleLess(IntPtr columnIndex, double value)
-        {
-            NativeMethods.double_less(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void DoubleLessEqual(IntPtr columnIndex, double value)
-        {
-            NativeMethods.double_less_equal(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void DoubleGreater(IntPtr columnIndex, double value)
-        {
-            NativeMethods.double_greater(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void DoubleGreaterEqual(IntPtr columnIndex, double value)
-        {
-            NativeMethods.double_greater_equal(this, columnIndex, value, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void TimestampTicksEqual(IntPtr columnIndex, DateTimeOffset value)
-        {
-            NativeMethods.timestamp_ticks_equal(this, columnIndex, value.ToUniversalTime().Ticks, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void TimestampTicksNotEqual(IntPtr columnIndex, DateTimeOffset value)
-        {
-            NativeMethods.timestamp_ticks_not_equal(this, columnIndex, value.ToUniversalTime().Ticks, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void TimestampTicksLess(IntPtr columnIndex, DateTimeOffset value)
-        {
-            NativeMethods.timestamp_ticks_less(this, columnIndex, value.ToUniversalTime().Ticks, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void TimestampTicksLessEqual(IntPtr columnIndex, DateTimeOffset value)
-        {
-            NativeMethods.timestamp_ticks_less_equal(this, columnIndex, value.ToUniversalTime().Ticks, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void TimestampTicksGreater(IntPtr columnIndex, DateTimeOffset value)
-        {
-            NativeMethods.timestamp_ticks_greater(this, columnIndex, value.ToUniversalTime().Ticks, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void TimestampTicksGreaterEqual(IntPtr columnIndex, DateTimeOffset value)
-        {
-            NativeMethods.timestamp_ticks_greater_equal(this, columnIndex, value.ToUniversalTime().Ticks, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void ObjectEqual(IntPtr columnIndex, ObjectHandle objectHandle)
-        {
-            NativeMethods.query_object_equal(this, columnIndex, objectHandle, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void NullEqual(IntPtr columnIndex)
-        {
-            NativeMethods.null_equal(this, columnIndex, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public void NullNotEqual(IntPtr columnIndex)
-        {
-            NativeMethods.null_not_equal(this, columnIndex, out var nativeException);
-            nativeException.ThrowIfNecessary();
-        }
-
-        public bool TryFindNext(ObjectHandle afterObject, SharedRealmHandle sharedRealm, out ObjectHandle objectHandle)
-        {
-            var result = NativeMethods.findNext(this, afterObject, out var nativeException);
-            nativeException.ThrowIfNecessary();
-
-            if (result == IntPtr.Zero)
-            {
-                objectHandle = null;
-                return false;
+                var (primitive, handles) = value.ToNative();
+                NativeMethods.string_like(this, realm, propertyIndex, primitive, caseSensitive, out nativeException);
+                handles?.Dispose();
             }
 
-            objectHandle = new ObjectHandle(sharedRealm, result);
-            return true;
+            nativeException.ThrowIfNecessary();
         }
 
-        public bool TryFindDirect(SharedRealmHandle sharedRealm, out ObjectHandle handle, IntPtr? beginAtIndex = null)
+        public unsafe void ValueEqual(SharedRealmHandle realm, IntPtr propertyIndex, in RealmValue value)
         {
-            var result = NativeMethods.findDirect(this, beginAtIndex ?? IntPtr.Zero, sharedRealm, out var nativeException);
+            var (primitive, handles) = value.ToNative();
+            NativeMethods.primitive_equal(this, realm, propertyIndex, primitive, out var nativeException);
+            handles?.Dispose();
             nativeException.ThrowIfNecessary();
-            if (result == IntPtr.Zero)
-            {
-                handle = null;
-                return false;
-            }
-
-            handle = new ObjectHandle(sharedRealm, result);
-            return true;
         }
 
-        public IntPtr GetColumnIndex(string columnName)
+        public unsafe void ValueNotEqual(SharedRealmHandle realm, IntPtr propertyIndex, in RealmValue value)
         {
-            var result = NativeMethods.get_column_index(this, columnName, (IntPtr)columnName.Length, out var nativeException);
+            var (primitive, handles) = value.ToNative();
+            NativeMethods.primitive_not_equal(this, realm, propertyIndex, primitive, out var nativeException);
+            handles?.Dispose();
             nativeException.ThrowIfNecessary();
-            return result;
+        }
+
+        public unsafe void ValueLess(SharedRealmHandle realm, IntPtr propertyIndex, in RealmValue value)
+        {
+            var (primitive, handles) = value.ToNative();
+            NativeMethods.primitive_less(this, realm, propertyIndex, primitive, out var nativeException);
+            handles?.Dispose();
+            nativeException.ThrowIfNecessary();
+        }
+
+        public unsafe void ValueLessEqual(SharedRealmHandle realm, IntPtr propertyIndex, in RealmValue value)
+        {
+            var (primitive, handles) = value.ToNative();
+            NativeMethods.primitive_less_equal(this, realm, propertyIndex, primitive, out var nativeException);
+            handles?.Dispose();
+            nativeException.ThrowIfNecessary();
+        }
+
+        public unsafe void ValueGreater(SharedRealmHandle realm, IntPtr propertyIndex, in RealmValue value)
+        {
+            var (primitive, handles) = value.ToNative();
+            NativeMethods.primitive_greater(this, realm, propertyIndex, primitive, out var nativeException);
+            handles?.Dispose();
+            nativeException.ThrowIfNecessary();
+        }
+
+        public unsafe void ValueGreaterEqual(SharedRealmHandle realm, IntPtr propertyIndex, in RealmValue value)
+        {
+            var (primitive, handles) = value.ToNative();
+            NativeMethods.primitive_greater_equal(this, realm, propertyIndex, primitive, out var nativeException);
+            handles?.Dispose();
+            nativeException.ThrowIfNecessary();
+        }
+
+        public void NullEqual(SharedRealmHandle realm, IntPtr propertyIndex)
+        {
+            NativeMethods.null_equal(this, realm, propertyIndex, out var nativeException);
+            nativeException.ThrowIfNecessary();
+        }
+
+        public void NullNotEqual(SharedRealmHandle realm, IntPtr propertyIndex)
+        {
+            NativeMethods.null_not_equal(this, realm, propertyIndex, out var nativeException);
+            nativeException.ThrowIfNecessary();
         }
 
         public void Not()
@@ -580,39 +281,11 @@ namespace Realms
             return (int)result;
         }
 
-        public ResultsHandle CreateResults(SharedRealmHandle sharedRealm)
+        public ResultsHandle CreateResults(SharedRealmHandle sharedRealm, SortDescriptorHandle sortDescriptor)
         {
-            var result = NativeMethods.create_results(this, sharedRealm, out var nativeException);
+            var result = NativeMethods.create_results(this, sharedRealm, sortDescriptor, out var nativeException);
             nativeException.ThrowIfNecessary();
             return new ResultsHandle(sharedRealm, result);
-        }
-
-        public ResultsHandle CreateSortedResults(SharedRealmHandle sharedRealm, SortDescriptorBuilder sortDescriptorBuilder)
-        {
-            var marshaledValues = sortDescriptorBuilder.Flatten();
-            var result = NativeMethods.create_sorted_results(this, sharedRealm, sortDescriptorBuilder.TableHandle, marshaledValues.Item2, (IntPtr)marshaledValues.Item2.Length, marshaledValues.Item1, out var nativeException);
-            nativeException.ThrowIfNecessary();
-            return new ResultsHandle(sharedRealm, result);
-        }
-
-        public struct NumericQueryMethods
-        {
-            public readonly Action<IntPtr, int> Int;
-
-            public readonly Action<IntPtr, long> Long;
-
-            public readonly Action<IntPtr, float> Float;
-
-            public readonly Action<IntPtr, double> Double;
-
-            public NumericQueryMethods(Action<IntPtr, int> intQuery, Action<IntPtr, long> longQuery,
-                Action<IntPtr, float> floatQuery, Action<IntPtr, double> doubleQuery)
-            {
-                Int = intQuery;
-                Long = longQuery;
-                Float = floatQuery;
-                Double = doubleQuery;
-            }
         }
     }
 }

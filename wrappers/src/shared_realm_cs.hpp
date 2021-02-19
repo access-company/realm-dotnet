@@ -19,10 +19,21 @@
 #ifndef SHARED_REALM_CS_HPP
 #define SHARED_REALM_CS_HPP
 
-#include "shared_realm.hpp"
+#include "marshalling.hpp"
 #include "schema_cs.hpp"
-#include "object-store/src/binding_context.hpp"
-#include "object_accessor.hpp"
+#include "sync_session_cs.hpp"
+
+#include <realm/object-store/shared_realm.hpp>
+#include <realm/object-store/binding_context.hpp>
+#include <realm/object-store/object_accessor.hpp>
+#include <realm/object-store/sync/sync_manager.hpp>
+#include <realm/object-store/sync/sync_session.hpp>
+#include <realm/sync/config.hpp>
+
+using SharedSyncUser = std::shared_ptr<SyncUser>;
+
+using namespace realm;
+using namespace realm::binding;
 
 class ManagedExceptionDuringMigration : public std::runtime_error
 {
@@ -51,7 +62,23 @@ struct Configuration
     void* managed_should_compact_delegate;
     
     bool enable_cache;
+    uint64_t max_number_of_active_versions;
 };
+
+struct SyncConfiguration
+{
+    SharedSyncUser* user;
+
+    uint16_t* url;
+    size_t url_len;
+
+    SyncSessionStopPolicy session_stop_policy;
+};
+
+inline const TableRef get_table(const SharedRealm& realm, TableKey table_key)
+{
+    return realm->read_group().get_table(table_key);
+}
 
 namespace realm {
 namespace binding {
@@ -67,6 +94,8 @@ namespace binding {
         }
     private:
         void* m_managed_state_handle;
+
+        ~CSharpBindingContext();
     };
 }
     

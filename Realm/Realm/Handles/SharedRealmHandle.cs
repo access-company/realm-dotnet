@@ -21,28 +21,54 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading.Tasks;
+using MongoDB.Bson;
 using Realms.Exceptions;
 using Realms.Native;
 using Realms.Schema;
+using Realms.Sync.Exceptions;
 
 namespace Realms
 {
     internal class SharedRealmHandle : RealmHandle
     {
-        [SuppressMessage("StyleCop.CSharp.ReadabilityRules", "SA1121:UseBuiltInTypeAlias")]
         private static class NativeMethods
         {
+#pragma warning disable IDE1006 // Naming Styles
+
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate void NotifyRealmCallback(IntPtr stateHandle);
 
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate void GetNativeSchemaCallback(Native.Schema schema, IntPtr managed_callback);
 
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public unsafe delegate void OpenRealmCallback(IntPtr task_completion_source, IntPtr shared_realm, int error_code, byte* message_buf, IntPtr message_len);
+
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void OnBindingContextDestructedCallback(IntPtr handle);
+
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_open", CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr open(Native.Configuration configuration,
-                [MarshalAs(UnmanagedType.LPArray), In] Native.SchemaObject[] objects, int objects_length,
-                [MarshalAs(UnmanagedType.LPArray), In] Native.SchemaProperty[] properties,
+            public static extern IntPtr open(Configuration configuration,
+                [MarshalAs(UnmanagedType.LPArray), In] SchemaObject[] objects, int objects_length,
+                [MarshalAs(UnmanagedType.LPArray), In] SchemaProperty[] properties,
                 byte[] encryptionKey,
+                out NativeException ex);
+
+            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_open_with_sync", CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr open_with_sync(Configuration configuration, Sync.Native.SyncConfiguration sync_configuration,
+                [MarshalAs(UnmanagedType.LPArray), In] SchemaObject[] objects, int objects_length,
+                [MarshalAs(UnmanagedType.LPArray), In] SchemaProperty[] properties,
+                byte[] encryptionKey,
+                out NativeException ex);
+
+            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_open_with_sync_async", CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr open_with_sync_async(Configuration configuration, Sync.Native.SyncConfiguration sync_configuration,
+                [MarshalAs(UnmanagedType.LPArray), In] SchemaObject[] objects, int objects_length,
+                [MarshalAs(UnmanagedType.LPArray), In] SchemaProperty[] properties,
+                byte[] encryptionKey,
+                IntPtr task_completion_source,
                 out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_set_managed_state_handle", CallingConvention = CallingConvention.Cdecl)]
@@ -67,73 +93,85 @@ namespace Realms
             public static extern void cancel_transaction(SharedRealmHandle sharedRealm, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_is_in_transaction", CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr is_in_transaction(SharedRealmHandle sharedRealm, out NativeException ex);
+            [return: MarshalAs(UnmanagedType.U1)]
+            public static extern bool is_in_transaction(SharedRealmHandle sharedRealm, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_refresh", CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr refresh(SharedRealmHandle sharedRealm, out NativeException ex);
+            [return: MarshalAs(UnmanagedType.U1)]
+            public static extern bool refresh(SharedRealmHandle sharedRealm, out NativeException ex);
 
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_get_table", CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr get_table(SharedRealmHandle sharedRealm, [MarshalAs(UnmanagedType.LPWStr)]string tableName, IntPtr tableNameLength, out NativeException ex);
+            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_get_table_key", CallingConvention = CallingConvention.Cdecl)]
+            public static extern TableKey get_table_key(SharedRealmHandle sharedRealm, [MarshalAs(UnmanagedType.LPWStr)] string tableName, IntPtr tableNameLength, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_is_same_instance", CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr is_same_instance(SharedRealmHandle lhs, SharedRealmHandle rhs, out NativeException ex);
+            [return: MarshalAs(UnmanagedType.U1)]
+            public static extern bool is_same_instance(SharedRealmHandle lhs, SharedRealmHandle rhs, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_get_schema_version", CallingConvention = CallingConvention.Cdecl)]
             public static extern ulong get_schema_version(SharedRealmHandle sharedRealm, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_compact", CallingConvention = CallingConvention.Cdecl)]
-            [return: MarshalAs(UnmanagedType.I1)]
+            [return: MarshalAs(UnmanagedType.U1)]
             public static extern bool compact(SharedRealmHandle sharedRealm, out NativeException ex);
 
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_resolve_object_reference", CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr resolve_object_reference(SharedRealmHandle sharedRealm, ThreadSafeReferenceHandle referenceHandle, out NativeException ex);
+            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_resolve_reference", CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr resolve_reference(SharedRealmHandle sharedRealm, ThreadSafeReferenceHandle referenceHandle, ThreadSafeReference.Type type, out NativeException ex);
 
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_resolve_list_reference", CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr resolve_list_reference(SharedRealmHandle sharedRealm, ThreadSafeReferenceHandle referenceHandle, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_resolve_query_reference", CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr resolve_query_reference(SharedRealmHandle sharedRealm, ThreadSafeReferenceHandle referenceHandle, out NativeException ex);
+            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_resolve_realm_reference", CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr resolve_realm_reference(ThreadSafeReferenceHandle referenceHandle, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_write_copy", CallingConvention = CallingConvention.Cdecl)]
             public static extern void write_copy(SharedRealmHandle sharedRealm, [MarshalAs(UnmanagedType.LPWStr)] string path, IntPtr path_len, byte[] encryptionKey, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_create_object", CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr create_object(SharedRealmHandle sharedRealm, TableHandle table, out NativeException ex);
+            public static extern IntPtr create_object(SharedRealmHandle sharedRealm, TableKey table_key, out NativeException ex);
 
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_create_object_int_unique", CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr create_object_unique(SharedRealmHandle sharedRealm, TableHandle table, long key, [MarshalAs(UnmanagedType.I1)] bool has_value,
-                                                             [MarshalAs(UnmanagedType.I1)] bool is_nullable,
-                                                             [MarshalAs(UnmanagedType.I1)] bool update,
-                                                             [MarshalAs(UnmanagedType.I1)] out bool is_new, out NativeException ex);
-
-            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_create_object_string_unique", CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr create_object_unique(SharedRealmHandle sharedRealm, TableHandle table,
-                                                             [MarshalAs(UnmanagedType.LPWStr)] string value, IntPtr valueLen,
-                                                             [MarshalAs(UnmanagedType.I1)] bool update,
-                                                             [MarshalAs(UnmanagedType.I1)] out bool is_new, out NativeException ex);
+            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_create_object_unique", CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr create_object_unique(SharedRealmHandle sharedRealm, TableKey table_key, PrimitiveValue value,
+                                                             [MarshalAs(UnmanagedType.U1)] bool update,
+                                                             [MarshalAs(UnmanagedType.U1)] out bool is_new, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_get_schema", CallingConvention = CallingConvention.Cdecl)]
             public static extern void get_schema(SharedRealmHandle sharedRealm, IntPtr callback, out NativeException ex);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_install_callbacks", CallingConvention = CallingConvention.Cdecl)]
-            public static extern void install_callbacks(NotifyRealmCallback notifyRealmCallback, GetNativeSchemaCallback nativeSchemaCallback);
+            public static extern void install_callbacks(NotifyRealmCallback notifyRealmCallback, GetNativeSchemaCallback nativeSchemaCallback, OpenRealmCallback openCallback, OnBindingContextDestructedCallback contextDestructedCallback);
 
             [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_has_changed", CallingConvention = CallingConvention.Cdecl)]
-            [return: MarshalAs(UnmanagedType.I1)]
+            [return: MarshalAs(UnmanagedType.U1)]
             public static extern bool has_changed(SharedRealmHandle sharedRealm);
+
+            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_get_is_frozen", CallingConvention = CallingConvention.Cdecl)]
+            [return: MarshalAs(UnmanagedType.U1)]
+            public static extern bool get_is_frozen(SharedRealmHandle sharedRealm, out NativeException ex);
+
+            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_freeze", CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr freeze(SharedRealmHandle sharedRealm, out NativeException ex);
+
+            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_get_object_for_primary_key", CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr get_object_for_primary_key(SharedRealmHandle realmHandle, TableKey table_key, PrimitiveValue value, out NativeException ex);
+
+            [DllImport(InteropConfig.DLL_NAME, EntryPoint = "shared_realm_create_results", CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr create_results(SharedRealmHandle sharedRealm, TableKey table_key, out NativeException ex);
+
+#pragma warning restore IDE1006 // Naming Styles
         }
 
-        static SharedRealmHandle()
+        static unsafe SharedRealmHandle()
         {
             NativeCommon.Initialize();
 
             NativeMethods.NotifyRealmCallback notifyRealm = NotifyRealmChanged;
             NativeMethods.GetNativeSchemaCallback getNativeSchema = GetNativeSchema;
+            NativeMethods.OpenRealmCallback openRealm = HandleOpenRealmCallback;
+            NativeMethods.OnBindingContextDestructedCallback onBindingContextDestructed = OnBindingContextDestructed;
 
             GCHandle.Alloc(notifyRealm);
             GCHandle.Alloc(getNativeSchema);
+            GCHandle.Alloc(openRealm);
+            GCHandle.Alloc(onBindingContextDestructed);
 
-            NativeMethods.install_callbacks(notifyRealm, getNativeSchema);
+            NativeMethods.install_callbacks(notifyRealm, getNativeSchema, openRealm, onBindingContextDestructed);
         }
 
         [Preserve]
@@ -146,11 +184,38 @@ namespace Realms
             NativeMethods.destroy(handle);
         }
 
-        public static IntPtr Open(Native.Configuration configuration, RealmSchema schema, byte[] encryptionKey)
+        public static IntPtr Open(Configuration configuration, RealmSchema schema, byte[] encryptionKey)
         {
             var marshaledSchema = new SchemaMarshaler(schema);
 
-            var result = NativeMethods.open(configuration, marshaledSchema.Objects, marshaledSchema.Objects.Length, marshaledSchema.Properties, encryptionKey, out NativeException nativeException);
+            var result = NativeMethods.open(configuration, marshaledSchema.Objects, marshaledSchema.Objects.Length, marshaledSchema.Properties, encryptionKey, out var nativeException);
+            nativeException.ThrowIfNecessary();
+            return result;
+        }
+
+        public static SharedRealmHandle OpenWithSync(Configuration configuration, Sync.Native.SyncConfiguration syncConfiguration, RealmSchema schema, byte[] encryptionKey)
+        {
+            var marshaledSchema = new SchemaMarshaler(schema);
+
+            var result = NativeMethods.open_with_sync(configuration, syncConfiguration, marshaledSchema.Objects, marshaledSchema.Objects.Length, marshaledSchema.Properties, encryptionKey, out var nativeException);
+            nativeException.ThrowIfNecessary();
+
+            return new SharedRealmHandle(result);
+        }
+
+        public static AsyncOpenTaskHandle OpenWithSyncAsync(Configuration configuration, Sync.Native.SyncConfiguration syncConfiguration, RealmSchema schema, byte[] encryptionKey, GCHandle tcsHandle)
+        {
+            var marshaledSchema = new SchemaMarshaler(schema);
+
+            var asyncTaskPtr = NativeMethods.open_with_sync_async(configuration, syncConfiguration, marshaledSchema.Objects, marshaledSchema.Objects.Length, marshaledSchema.Properties, encryptionKey, GCHandle.ToIntPtr(tcsHandle), out var nativeException);
+            nativeException.ThrowIfNecessary();
+            var asyncTaskHandle = new AsyncOpenTaskHandle(asyncTaskPtr);
+            return asyncTaskHandle;
+        }
+
+        public static IntPtr ResolveFromReference(ThreadSafeReferenceHandle referenceHandle)
+        {
+            var result = NativeMethods.resolve_realm_reference(referenceHandle, out var nativeException);
             nativeException.ThrowIfNecessary();
             return result;
         }
@@ -159,6 +224,16 @@ namespace Realms
         {
             NativeMethods.close_realm(this, out var nativeException);
             nativeException.ThrowIfNecessary();
+        }
+
+        public bool IsFrozen
+        {
+            get
+            {
+                var result = NativeMethods.get_is_frozen(this, out var nativeException);
+                nativeException.ThrowIfNecessary();
+                return result;
+            }
         }
 
         public void SetManagedStateHandle(IntPtr managedStateHandle)
@@ -196,28 +271,28 @@ namespace Realms
         {
             var result = NativeMethods.is_in_transaction(this, out var nativeException);
             nativeException.ThrowIfNecessary();
-            return MarshalHelpers.IntPtrToBool(result);
+            return result;
         }
 
         public bool Refresh()
         {
             var result = NativeMethods.refresh(this, out var nativeException);
             nativeException.ThrowIfNecessary();
-            return MarshalHelpers.IntPtrToBool(result);
+            return result;
         }
 
-        public TableHandle GetTable(string tableName)
+        public TableKey GetTableKey(string tableName)
         {
-            var result = NativeMethods.get_table(this, tableName, (IntPtr)tableName.Length, out var nativeException);
+            var tableKey = NativeMethods.get_table_key(this, tableName, (IntPtr)tableName.Length, out var nativeException);
             nativeException.ThrowIfNecessary();
-            return new TableHandle(this, result);
+            return tableKey;
         }
 
         public bool IsSameInstance(SharedRealmHandle other)
         {
             var result = NativeMethods.is_same_instance(this, other, out var nativeException);
             nativeException.ThrowIfNecessary();
-            return MarshalHelpers.IntPtrToBool(result);
+            return result;
         }
 
         public ulong GetSchemaVersion()
@@ -241,22 +316,7 @@ namespace Realms
                 throw new RealmException("Can only resolve a thread safe reference once.");
             }
 
-            NativeException nativeException;
-            IntPtr result;
-            switch (reference.ReferenceType)
-            {
-                case ThreadSafeReference.Type.Object:
-                    result = NativeMethods.resolve_object_reference(this, reference.Handle, out nativeException);
-                    break;
-                case ThreadSafeReference.Type.List:
-                    result = NativeMethods.resolve_list_reference(this, reference.Handle, out nativeException);
-                    break;
-                case ThreadSafeReference.Type.Query:
-                    result = NativeMethods.resolve_query_reference(this, reference.Handle, out nativeException);
-                    break;
-                default:
-                    throw new NotSupportedException();
-            }
+            var result = NativeMethods.resolve_reference(this, reference.Handle, reference.ReferenceType, out var nativeException);
             nativeException.ThrowIfNecessary();
 
             reference.Handle.Close();
@@ -277,31 +337,34 @@ namespace Realms
             nativeException.ThrowIfNecessary();
         }
 
-        public ObjectHandle CreateObject(TableHandle table)
+        public ObjectHandle CreateObject(TableKey tableKey)
         {
-            var result = NativeMethods.create_object(this, table, out NativeException ex);
+            var result = NativeMethods.create_object(this, tableKey, out NativeException ex);
             ex.ThrowIfNecessary();
             return new ObjectHandle(this, result);
         }
 
-        public ObjectHandle CreateObjectWithPrimaryKey(Property pkProperty, object primaryKey, TableHandle table, string parentType, bool update, out bool isNew)
+        public unsafe ObjectHandle CreateObjectWithPrimaryKey(Property pkProperty, object primaryKey, TableKey tableKey, string parentType, bool update, out bool isNew)
         {
             if (primaryKey == null && !pkProperty.Type.IsNullable())
             {
                 throw new ArgumentException($"{parentType}'s primary key is defined as non-nullable, but the value passed is null");
             }
 
-            switch (pkProperty.Type.UnderlyingType())
+            RealmValue pkValue = pkProperty.Type.ToRealmValueType() switch
             {
-                case PropertyType.String:
-                    var stringKey = (string)primaryKey;
-                    return CreateObjectWithPrimaryKey(table, stringKey, update, out isNew);
-                case PropertyType.Int:
-                    var longKey = primaryKey == null ? (long?)null : Convert.ToInt64(primaryKey);
-                    return CreateObjectWithPrimaryKey(table, longKey, pkProperty.Type.IsNullable(), update, out isNew);
-                default:
-                    throw new NotSupportedException($"Unexpected primary key of type: {pkProperty.Type}");
-            }
+                RealmValueType.String => (string)primaryKey,
+                RealmValueType.Int => primaryKey == null ? (long?)null : Convert.ToInt64(primaryKey),
+                RealmValueType.ObjectId => (ObjectId?)primaryKey,
+                RealmValueType.Guid => (Guid?)primaryKey,
+                _ => throw new NotSupportedException($"Primary key of type {pkProperty.Type} is not supported"),
+            };
+
+            var (primitiveValue, handles) = pkValue.ToNative();
+            var result = NativeMethods.create_object_unique(this, tableKey, primitiveValue, update, out isNew, out var ex);
+            handles?.Dispose();
+            ex.ThrowIfNecessary();
+            return new ObjectHandle(this, result);
         }
 
         public bool HasChanged()
@@ -309,21 +372,38 @@ namespace Realms
             return NativeMethods.has_changed(this);
         }
 
-        private ObjectHandle CreateObjectWithPrimaryKey(TableHandle table, long? key, bool isNullable, bool update, out bool isNew)
+        public SharedRealmHandle Freeze()
         {
-            var result = NativeMethods.create_object_unique(this, table, key ?? 0, key.HasValue, isNullable, update, out isNew, out var ex);
-            ex.ThrowIfNecessary();
-            return new ObjectHandle(this, result);
+            var result = NativeMethods.freeze(this, out var nativeException);
+            nativeException.ThrowIfNecessary();
+            return new SharedRealmHandle(result);
         }
 
-        private ObjectHandle CreateObjectWithPrimaryKey(TableHandle table, string key, bool update, out bool isNew)
+        public unsafe bool TryFindObject(TableKey tableKey, in RealmValue id, out ObjectHandle objectHandle)
         {
-            var result = NativeMethods.create_object_unique(this, table, key, (IntPtr)(key?.Length ?? 0), update, out isNew, out var ex);
+            var (primitiveValue, handles) = id.ToNative();
+            var result = NativeMethods.get_object_for_primary_key(this, tableKey, primitiveValue, out var ex);
+            handles?.Dispose();
             ex.ThrowIfNecessary();
-            return new ObjectHandle(this, result);
+
+            if (result == IntPtr.Zero)
+            {
+                objectHandle = null;
+                return false;
+            }
+
+            objectHandle = new ObjectHandle(this, result);
+            return true;
         }
 
-        [NativeCallback(typeof(NativeMethods.GetNativeSchemaCallback))]
+        public ResultsHandle CreateResults(TableKey tableKey)
+        {
+            var result = NativeMethods.create_results(this, tableKey, out var nativeException);
+            nativeException.ThrowIfNecessary();
+            return new ResultsHandle(this, result);
+        }
+
+        [MonoPInvokeCallback(typeof(NativeMethods.GetNativeSchemaCallback))]
         private static void GetNativeSchema(Native.Schema schema, IntPtr managedCallbackPtr)
         {
             var handle = GCHandle.FromIntPtr(managedCallbackPtr);
@@ -332,21 +412,50 @@ namespace Realms
             handle.Free();
         }
 
-        [NativeCallback(typeof(NativeMethods.NotifyRealmCallback))]
+        [MonoPInvokeCallback(typeof(NativeMethods.NotifyRealmCallback))]
         public static void NotifyRealmChanged(IntPtr stateHandle)
         {
             var gch = GCHandle.FromIntPtr(stateHandle);
             ((Realm.State)gch.Target).NotifyChanged(EventArgs.Empty);
         }
 
+        [MonoPInvokeCallback(typeof(NativeMethods.OpenRealmCallback))]
+        [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope", Justification = "The task awaiter will own the ThreadSafeReference handle.")]
+        private static unsafe void HandleOpenRealmCallback(IntPtr taskCompletionSource, IntPtr realm_reference, int error_code, byte* messageBuffer, IntPtr messageLength)
+        {
+            var handle = GCHandle.FromIntPtr(taskCompletionSource);
+            var tcs = (TaskCompletionSource<ThreadSafeReferenceHandle>)handle.Target;
+
+            if (error_code == 0)
+            {
+                tcs.TrySetResult(new ThreadSafeReferenceHandle(realm_reference, isRealmReference: true));
+            }
+            else
+            {
+                var inner = new SessionException(Encoding.UTF8.GetString(messageBuffer, (int)messageLength), (ErrorCode)error_code);
+                const string OuterMessage = "A system error occurred while opening a Realm. See InnerException for more details";
+                tcs.TrySetException(new RealmException(OuterMessage, inner));
+            }
+        }
+
+        [MonoPInvokeCallbackAttribute(typeof(NativeMethods.OnBindingContextDestructedCallback))]
+        public static void OnBindingContextDestructed(IntPtr handle)
+        {
+            if (handle != IntPtr.Zero)
+            {
+                var gch = GCHandle.FromIntPtr(handle);
+                ((Realm.State)gch.Target).Dispose();
+            }
+        }
+
         public class SchemaMarshaler
         {
-            public readonly Native.SchemaObject[] Objects;
-            public readonly Native.SchemaProperty[] Properties;
+            public readonly SchemaObject[] Objects;
+            public readonly SchemaProperty[] Properties;
 
             public SchemaMarshaler(RealmSchema schema)
             {
-                var properties = new List<Native.SchemaProperty>();
+                var properties = new List<SchemaProperty>();
 
                 Objects = schema.Select(@object =>
                 {
@@ -354,19 +463,20 @@ namespace Realms
 
                     properties.AddRange(@object.Select(ForMarshalling));
 
-                    return new Native.SchemaObject
+                    return new SchemaObject
                     {
                         name = @object.Name,
                         properties_start = start,
-                        properties_end = properties.Count
+                        properties_end = properties.Count,
+                        is_embedded = @object.IsEmbedded,
                     };
                 }).ToArray();
                 Properties = properties.ToArray();
             }
 
-            public static Native.SchemaProperty ForMarshalling(Property property)
+            public static SchemaProperty ForMarshalling(Property property)
             {
-                return new Native.SchemaProperty
+                return new SchemaProperty
                 {
                     name = property.Name,
                     type = property.Type,

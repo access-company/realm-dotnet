@@ -17,8 +17,6 @@
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
-x64/
-x86/
 build/
 bld/
 [Bb]in/
@@ -44,7 +42,6 @@ artifacts/
 *_p.c
 *_i.h
 *.ilk
-*.meta
 *.obj
 *.pch
 *.pdb
@@ -93,6 +90,7 @@ nCrunchTemp_*
 *.ncrunchsolution
 # NuGet Packages
 *.nupkg
+!dependencies/*.nupkg
 # The packages folder can be ignored because of Package Restore
 **/packages/*
 # except build/, which is used as an MSBuild target.
@@ -181,30 +179,22 @@ Network Trash Folder
 Temporary Items
 .apdisk
 # Misc.
-packages
-Tools/RealmWeaver.Fody.dll
-wrappers/DerivedData
-wrappers/core
-wrappers/core-android
-wrappers/realm-core*.bz2
-wrappers/realm-core-android*.gz
-wrappers/realm-*.xz
 wrappers/cmake
 doxyout*
-RealmNetWeaver.Fody.dll
-NuGetBuild
-realm-core-android-*.tar.gz
-*.so
 NDependOut
 *.realm.lock
 *.realm.log_a
 *.realm.log_b
-RealmWeaver.Fody.dll
-wrappers/libs-dbg
 *.xam
 Resource.designer.cs
-*.gz
-Mono.Cecil.dll
-Realm.BuildTasks.dll
-*.nuget.targets
-*.nuget.props
+FodyWeavers.xsd
+.vscode
+Realm/Realm.Unity/Runtime/**/*.dll
+Realm/Realm.Unity/Runtime/**/*.so
+Realm/Realm.Unity/Runtime/**/*.dylib
+Realm/Realm.Unity/Runtime/**/*.dll.config
+Realm/Realm.Unity/Runtime/**/*.framework/*
+Realm/Realm.Unity/Runtime/Dependencies/*.meta
+Realm/Realm.Unity/Runtime/Dependencies.meta
+Tests/PerformanceTests/BenchmarkDotNet.Artifacts/
+Realm/Realm.Unity/**/*.tgz

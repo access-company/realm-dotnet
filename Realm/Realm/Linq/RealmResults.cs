@@ -1,4 +1,4 @@
-﻿////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
 //
 // Copyright 2016 Realm Inc.
 //
@@ -17,17 +17,16 @@
 ////////////////////////////////////////////////////////////////////////////
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using Realms.Helpers;
 
 namespace Realms
 {
-    internal interface IQueryableCollection
-    {
-        QueryHandle CreateQuery();
-    }
-
-    internal class RealmResults<T> : RealmCollectionBase<T>, IOrderedQueryable<T>, IQueryableCollection
+    // Note: we need ICollection<T> implementation to allow Results to be used for RealmDictionary.Keys, RealmDictionary.Values.
+    // The regular array implements ICollection<T> so we're not doing anything particularly unusual here.
+    internal class RealmResults<T> : RealmCollectionBase<T>, IOrderedQueryable<T>, IQueryableCollection, ICollection<T>
     {
         private readonly ResultsHandle _handle;
 
@@ -39,21 +38,30 @@ namespace Realms
 
         public IQueryProvider Provider { get; }
 
-        internal RealmResults(Realm realm, RealmObject.Metadata metadata, RealmResultsProvider realmResultsProvider, Expression expression) : base(realm, metadata)
+        internal RealmResults(Realm realm, RealmObjectBase.Metadata metadata, RealmResultsProvider realmResultsProvider, Expression expression) : base(realm, metadata)
         {
             Provider = realmResultsProvider;
             Expression = expression ?? Expression.Constant(this);
         }
 
-        internal RealmResults(Realm realm, RealmObject.Metadata metadata, ResultsHandle handle = null)
+        internal RealmResults(Realm realm, ResultsHandle handle, RealmObjectBase.Metadata metadata)
             : this(realm, metadata, new RealmResultsProvider(realm, metadata), null)
         {
-            _handle = handle ?? metadata.Table.CreateResults(realm.SharedRealmHandle);
+            _handle = handle;
         }
 
-        public QueryHandle CreateQuery() => ResultsHandle.CreateQuery();
+        internal RealmResults(Realm realm, RealmObjectBase.Metadata metadata)
+            : this(realm, realm.SharedRealmHandle.CreateResults(metadata.TableKey), metadata)
+        {
+        }
 
-        internal override CollectionHandleBase CreateHandle()
+        public QueryHandle GetQuery() => ResultsHandle.GetQuery();
+
+        public SortDescriptorHandle GetSortDescriptor() => ResultsHandle.GetSortDescriptor();
+
+        internal override RealmCollectionBase<T> CreateCollection(Realm realm, CollectionHandleBase handle) => new RealmResults<T>(realm, (ResultsHandle)handle, Metadata);
+
+        internal override CollectionHandleBase GetOrCreateHandle()
         {
             if (_handle != null)
             {
@@ -63,17 +71,49 @@ namespace Realms
             // do all the LINQ expression evaluation to build a query
             var qv = ((RealmResultsProvider)Provider).MakeVisitor();
             qv.Visit(Expression);
-            var queryHandle = qv.CoreQueryHandle; // grab out the built query definition
-            var sortHandle = qv.OptionalSortDescriptorBuilder;
-            return Realm.MakeResultsForQuery(queryHandle, sortHandle);
+            return qv.MakeResultsForQuery();
         }
 
-        #region IList members
+        protected override T GetValueAtIndex(int index) => ResultsHandle.GetValueAtIndex(index, Metadata, Realm).As<T>();
 
-        public override bool Contains(object value) => Contains((T)value);
+        public override int IndexOf(T value)
+        {
+            Argument.NotNull(value, nameof(value));
 
-        public override int IndexOf(object value) => IndexOf((T)value);
+            if (_argumentType != RealmValueType.Object)
+            {
+                throw new NotSupportedException("IndexOf on non-object results is not supported.");
+            }
 
-        #endregion
+            var obj = value as RealmObjectBase;
+            if (!obj.IsManaged)
+            {
+                throw new ArgumentException("Value does not belong to a realm", nameof(value));
+            }
+
+            return ResultsHandle.Find(obj.ObjectHandle);
+        }
+
+        void ICollection<T>.Add(T item) => throw new NotSupportedException("Adding elements to the Results collection is not supported.");
+
+        bool ICollection<T>.Remove(T item) => throw new NotSupportedException("Removing elements from the Results collection is not supported.");
+    }
+
+    /// <summary>
+    /// IQueryableCollection exposes a method to create QueryHandle without forcing the caller to infer the type of the objects contained in the results.
+    /// </summary>
+    internal interface IQueryableCollection
+    {
+        /// <summary>
+        /// Creates a query handle for the results.
+        /// </summary>
+        /// <returns>The query handle.</returns>
+        QueryHandle GetQuery();
+
+        /// <summary>
+        /// Creates a sort descriptor handle for the results.
+        /// </summary>
+        /// <returns>The sort descriptor handle.</returns>
+        SortDescriptorHandle GetSortDescriptor();
     }
 }

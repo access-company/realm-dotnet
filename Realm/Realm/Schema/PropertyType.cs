@@ -17,6 +17,7 @@
 ////////////////////////////////////////////////////////////////////////////
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Realms.Schema
 {
@@ -24,7 +25,10 @@ namespace Realms.Schema
     /// An enum, containing the possible property types.
     /// </summary>
     [Flags]
-    public enum PropertyType : byte
+    [SuppressMessage("Naming", "CA1714:Flags enums should have plural names", Justification = "Would be a breaking change to rename.")]
+    [SuppressMessage("Naming", "CA1720:Identifier contains type name", Justification = "This is by design - the enum represents types.")]
+    [SuppressMessage("Design", "CA1069:Enums values should not be duplicated", Justification = "The native values are duplicated.")]
+    public enum PropertyType : ushort
     {
         /// <summary>
         /// Integer property, combining all integral types.
@@ -72,6 +76,21 @@ namespace Realms.Schema
         LinkingObjects = 8,
 
         /// <summary>
+        /// 96 bit ObjectID property.
+        /// </summary>
+        ObjectId = 10,
+
+        /// <summary>
+        /// 128 bit decimal property.
+        /// </summary>
+        Decimal = 11,
+
+        /// <summary>
+        /// 128 bit UUID property.
+        /// </summary>
+        Guid = 12,
+
+        /// <summary>
         /// A required property. Can be combined with other values.
         /// </summary>
         Required = 0,
@@ -87,8 +106,68 @@ namespace Realms.Schema
         Array = 128,
 
         /// <summary>
+        /// A collection of unique values. Can be combined with other values.
+        /// </summary>
+        Set = 256,
+
+        /// <summary>
+        /// A collection of key-value pairs where the key is string. Can be combined with other values.
+        /// </summary>
+        Dictionary = 512,
+
+        /// <summary>
         /// Metadata flags.
         /// </summary>
-        Flags = Nullable | Array
+        Flags = Nullable | Array | Set | Dictionary,
+
+        /// <summary>
+        /// A shorthand for PropertyType.Int | PropertyType.Nullable.
+        /// </summary>
+        NullableInt = Int | Nullable,
+
+        /// <summary>
+        /// A shorthand for PropertyType.Bool | PropertyType.Nullable.
+        /// </summary>
+        NullableBool = Bool | Nullable,
+
+        /// <summary>
+        /// A shorthand for PropertyType.String | PropertyType.Nullable.
+        /// </summary>
+        NullableString = String | Nullable,
+
+        /// <summary>
+        /// A shorthand for PropertyType.Data | PropertyType.Nullable.
+        /// </summary>
+        NullableData = Data | Nullable,
+
+        /// <summary>
+        /// A shorthand for PropertyType.Float | PropertyType.Nullable.
+        /// </summary>
+        NullableFloat = Float | Nullable,
+
+        /// <summary>
+        /// A shorthand for PropertyType.Double | PropertyType.Nullable.
+        /// </summary>
+        NullableDouble = Double | Nullable,
+
+        /// <summary>
+        /// A shorthand for PropertyType.Date | PropertyType.Nullable.
+        /// </summary>
+        NullableDate = Date | Nullable,
+
+        /// <summary>
+        /// A shorthand for PropertyType.ObjectId | PropertyType.Nullable.
+        /// </summary>
+        NullableObjectId = ObjectId | Nullable,
+
+        /// <summary>
+        /// A shorthand for PropertyType.Decimal | PropertyType.Nullable.
+        /// </summary>
+        NullableDecimal = Decimal | Nullable,
+
+        /// <summary>
+        /// A shorthand for PropertyType.Guid | PropertyType.Nullable.
+        /// </summary>
+        NullableGuid = Guid | Nullable,
     }
 }

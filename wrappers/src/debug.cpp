@@ -18,12 +18,11 @@
 #include "debug.hpp"
 #include "realm_export_decls.hpp"
 
-#include "impl/realm_coordinator.hpp"
+#include <realm/object-store/impl/realm_coordinator.hpp>
 
-#if REALM_ENABLE_SYNC
-#include "sync/sync_manager.hpp"
-#include "sync/sync_user.hpp"
-#endif
+#include <realm/object-store/sync/sync_manager.hpp>
+#include <realm/object-store/sync/sync_user.hpp>
+#include <realm/object-store/sync/app.hpp>
 
 namespace realm {
 
@@ -40,23 +39,13 @@ void debug_log(const std::string message)
 }
 
 extern "C" {
-
-REALM_EXPORT void set_debug_logger(realm::DebugLoggerT debug_logger)
-{
-  realm::debug_log_function = debug_logger;
-}
-
-REALM_EXPORT void realm_reset_for_testing()
-{
-    realm::_impl::RealmCoordinator::clear_all_caches();
-
-#if REALM_ENABLE_SYNC
-    for (auto user : realm::SyncManager::shared().all_logged_in_users()) {
-        user->log_out();
+    REALM_EXPORT void set_debug_logger(realm::DebugLoggerT debug_logger)
+    {
+      realm::debug_log_function = debug_logger;
     }
 
-    realm::SyncManager::shared().reset_for_testing();
-#endif
-}
-
+    REALM_EXPORT void realm_reset_for_testing()
+    {
+        realm::_impl::RealmCoordinator::clear_all_caches();
+    }
 }

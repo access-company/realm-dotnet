@@ -18,57 +18,57 @@
 
 using System;
 using Realms.Native;
-using Realms.Schema;
 
 namespace Realms
 {
     internal abstract class CollectionHandleBase : NotifiableObjectHandleBase
     {
+        protected delegate IntPtr SnapshotDelegate(out NativeException ex);
+
         public abstract bool IsValid { get; }
+
+        public bool CanSnapshot => SnapshotCore != null;
+
+        protected virtual SnapshotDelegate SnapshotCore => null;
 
         protected CollectionHandleBase(RealmHandle root, IntPtr handle) : base(root, handle)
         {
         }
 
-        public bool TryGetObjectAtIndex(int index, out ObjectHandle objectHandle)
-        {
-            var result = GetObjectAtIndexCore((IntPtr)index, out var nativeException);
-            nativeException.ThrowIfNecessary();
-            if (result == IntPtr.Zero)
-            {
-                objectHandle = null;
-                return false;
-            }
-
-            objectHandle = new ObjectHandle(Root, result);
-            return true;
-        }
-
-        protected abstract IntPtr GetObjectAtIndexCore(IntPtr index, out NativeException nativeException);
-
-        public PrimitiveValue GetPrimitiveAtIndex(int index, PropertyType type)
-        {
-            var result = new PrimitiveValue
-            {
-                type = type
-            };
-
-            GetPrimitiveAtIndexCore((IntPtr)index, ref result, out var nativeException);
-            nativeException.ThrowIfNecessary();
-
-            return result;
-        }
-
-        protected abstract void GetPrimitiveAtIndexCore(IntPtr index, ref PrimitiveValue result, out NativeException nativeException);
-
-        public abstract string GetStringAtIndex(int index);
-
-        public abstract byte[] GetByteArrayAtIndex(int index);
-
         public abstract int Count();
 
-        public abstract ResultsHandle Snapshot();
+        public ResultsHandle Snapshot()
+        {
+            if (CanSnapshot)
+            {
+                var ptr = SnapshotCore(out var ex);
+                ex.ThrowIfNecessary();
+                return new ResultsHandle(Root ?? this, ptr);
+            }
+
+            throw new NotSupportedException("Snapshotting this collection is not supported.");
+        }
 
         public abstract ResultsHandle GetFilteredResults(string query);
+
+        public abstract CollectionHandleBase Freeze(SharedRealmHandle frozenRealmHandle);
+
+        public abstract void Clear();
+
+        protected RealmValue ToRealmValue(PrimitiveValue primitive, RealmObjectBase.Metadata metadata, Realm realm)
+        {
+            if (primitive.Type != RealmValueType.Object)
+            {
+                return new RealmValue(primitive);
+            }
+
+            var objectHandle = primitive.AsObject(Root);
+            if (metadata == null)
+            {
+                throw new NotImplementedException("Mixed objects are not supported yet.");
+            }
+
+            return new RealmValue(realm.MakeObject(metadata, objectHandle));
+        }
     }
 }

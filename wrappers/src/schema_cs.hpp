@@ -16,24 +16,27 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-#ifndef SCHEMA_CS_HPP
-#define SCHEMA_CS_HPP
+#pragma once
 
 #include <vector>
-#include "object-store/src/schema.hpp"
-#include "object-store/src/object_schema.hpp"
-#include "object-store/src/property.hpp"
+#include <realm/object-store/object_accessor.hpp>
+#include <realm/object-store/schema.hpp>
+#include <realm/object-store/object_schema.hpp>
+#include <realm/object-store/property.hpp>
+#include <realm/parser/query_parser.hpp>
+
+using namespace realm;
 
 struct SchemaProperty
 {
     const char* name;
-    realm::PropertyType type;
+    PropertyType type;
     const char* object_type;
     const char* link_origin_property_name;
     bool is_primary;
     bool is_indexed;
     
-    static SchemaProperty for_marshalling(const realm::Property&);
+    static SchemaProperty for_marshalling(const Property&);
 };
 
 struct SchemaObject
@@ -41,8 +44,9 @@ struct SchemaObject
     const char* name;
     int properties_start;
     int properties_end;
+    bool is_embedded;
     
-    static SchemaObject for_marshalling(const realm::ObjectSchema&, std::vector<SchemaProperty>&);
+    static SchemaObject for_marshalling(const ObjectSchema&, std::vector<SchemaProperty>&, bool);
 };
 
 struct SchemaForMarshaling
@@ -54,7 +58,7 @@ struct SchemaForMarshaling
     
 };
 
-REALM_FORCEINLINE SchemaProperty SchemaProperty::for_marshalling(const realm::Property& property)
+REALM_FORCEINLINE SchemaProperty SchemaProperty::for_marshalling(const Property& property)
 {
     return {
         property.name.c_str(),
@@ -66,10 +70,11 @@ REALM_FORCEINLINE SchemaProperty SchemaProperty::for_marshalling(const realm::Pr
     };
 }
 
-REALM_FORCEINLINE SchemaObject SchemaObject::for_marshalling(const realm::ObjectSchema& object, std::vector<SchemaProperty>& properties)
+REALM_FORCEINLINE SchemaObject SchemaObject::for_marshalling(const ObjectSchema& object, std::vector<SchemaProperty>& properties, bool is_embedded)
 {
     SchemaObject ret;
     ret.name = object.name.c_str();
+    ret.is_embedded = is_embedded;
     
     ret.properties_start = static_cast<int>(properties.size());
     for (const auto& property : object.persisted_properties) {
@@ -83,6 +88,4 @@ REALM_FORCEINLINE SchemaObject SchemaObject::for_marshalling(const realm::Object
     return ret;
 }
 
-realm::util::Optional<realm::Schema> create_schema(SchemaObject* objects, int objects_length, SchemaProperty* properties);
-
-#endif /* defined(SCHEMA_CS_HPP) */
+util::Optional<Schema> create_schema(SchemaObject* objects, int objects_length, SchemaProperty* properties);

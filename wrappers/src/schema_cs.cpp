@@ -16,12 +16,6 @@
 //
 ////////////////////////////////////////////////////////////////////////////
  
-#include <realm.hpp>
-#include <realm/lang_bind_helper.hpp>
-#include "error_handling.hpp"
-#include "realm_export_decls.hpp"
-#include "object-store/src/shared_realm.hpp"
-#include "object-store/src/schema.hpp"
 #include "schema_cs.hpp"
 
 using namespace realm;
@@ -36,6 +30,7 @@ util::Optional<Schema> create_schema(SchemaObject* objects, int objects_length, 
         
         ObjectSchema o;
         o.name = object.name;
+        o.is_embedded = object.is_embedded;
         
         for (int n = object.properties_start; n < object.properties_end; n++) {
             SchemaProperty& property = properties[n];

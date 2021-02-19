@@ -1,4 +1,4 @@
-﻿////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
 //
 // Copyright 2017 Realm Inc.
 //
@@ -18,6 +18,7 @@
 
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Foundation;
 using NUnit.Runner;
 using NUnit.Runner.Services;
@@ -25,7 +26,7 @@ using UIKit;
 using Xamarin.Forms;
 using Xamarin.Forms.Platform.iOS;
 
-namespace Tests
+namespace Realms.Tests.iOS
 {
     [Register("AppDelegate")]
     public class AppDelegate : FormsApplicationDelegate
@@ -35,6 +36,7 @@ namespace Tests
             Forms.Init();
 
             var nunit = new App();
+            nunit.AddTestAssembly(typeof(TestHelpers).Assembly);
             var options = new TestOptions
             {
                 LogToOutput = true
@@ -47,7 +49,6 @@ namespace Tests
             {
                 options.AutoRun = true;
                 options.CreateXmlResultFile = true;
-                options.TerminateAfterExecution = true;
 
                 var hasResultsPath = false;
                 for (var i = 0; i < arguments.Length; i++)
@@ -65,7 +66,16 @@ namespace Tests
                     throw new Exception("You must provide path to store test results with --resultpath path/to/results.xml");
                 }
 
-                options.XmlTransformFile = "nunit3-junit.xslt";
+                options.OnCompletedCallback = () =>
+                {
+                    TestHelpers.TransformTestResults(options.ResultFilePath);
+
+                    var selector = new ObjCRuntime.Selector("terminateWithSuccess");
+                    UIApplication.SharedApplication.PerformSelector(selector, UIApplication.SharedApplication, 0);
+
+                    return Task.CompletedTask;
+                };
+
             }
 
             nunit.Options = options;

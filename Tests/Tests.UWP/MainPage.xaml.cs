@@ -1,6 +1,6 @@
 ﻿////////////////////////////////////////////////////////////////////////////
 //
-// Copyright 2017 Realm Inc.
+// Copyright 2021 Realm Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,10 +16,9 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-using System.Reflection;
 using NUnit.Runner.Services;
 
-namespace Tests.UWP
+namespace Realms.Tests.UWP
 {
     public sealed partial class MainPage
     {
@@ -28,7 +27,7 @@ namespace Tests.UWP
             InitializeComponent();
 
             var nunit = new NUnit.Runner.App();
-            nunit.AddTestAssembly(typeof(MainPage).GetTypeInfo().Assembly);
+            nunit.AddTestAssembly(typeof(TestHelpers).Assembly);
 
             nunit.Options = new TestOptions
             {

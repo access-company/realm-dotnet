@@ -16,13 +16,12 @@
 //
 ////////////////////////////////////////////////////////////////////////////
 
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
+using Realms.Schema;
 
 namespace Realms.Native
 {
     [StructLayout(LayoutKind.Sequential)]
-    [SuppressMessage("StyleCop.CSharp.NamingRules", "SA1307:AccessibleFieldsMustBeginWithUpperCaseLetter")]
     internal struct SchemaProperty
     {
         internal static readonly int Size = Marshal.SizeOf<SchemaProperty>();
@@ -30,8 +29,8 @@ namespace Realms.Native
         [MarshalAs(UnmanagedType.LPStr)]
         internal string name;
 
-        [MarshalAs(UnmanagedType.U1)]
-        internal Realms.Schema.PropertyType type;
+        [MarshalAs(UnmanagedType.U2)]
+        internal PropertyType type;
 
         [MarshalAs(UnmanagedType.LPStr)]
         internal string object_type;
@@ -39,10 +38,10 @@ namespace Realms.Native
         [MarshalAs(UnmanagedType.LPStr)]
         internal string link_origin_property_name;
 
-        [MarshalAs(UnmanagedType.I1)]
+        [MarshalAs(UnmanagedType.U1)]
         internal bool is_primary;
 
-        [MarshalAs(UnmanagedType.I1)]
+        [MarshalAs(UnmanagedType.U1)]
         internal bool is_indexed;
     }
 }

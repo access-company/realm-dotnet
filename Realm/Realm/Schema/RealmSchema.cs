@@ -20,9 +20,12 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
+using Realms.Helpers;
 
 namespace Realms.Schema
 {
@@ -31,15 +34,15 @@ namespace Realms.Schema
     /// dynamically, by evaluating a Realm from disk.
     /// </summary>
     /// <remarks>
-    /// By default this will be all the <see cref="RealmObject"/>s in all your assemblies unless you restrict with
-    /// <see cref="RealmConfigurationBase.ObjectClasses"/>. Just because a given class <em>may</em> be stored in a
-    /// Realm doesn't imply much overhead. There will be a small amount of metadata but objects only start to
+    /// By default this will be all the <see cref="RealmObject"/>s and <see cref="EmbeddedObject"/>s in all your assemblies
+    /// unless you restrict with <see cref="RealmConfigurationBase.ObjectClasses"/>. Just because a given class <em>may</em>
+    /// be stored in a Realm doesn't imply much overhead. There will be a small amount of metadata but objects only start to
     /// take up space once written.
     /// </remarks>
     public class RealmSchema : IReadOnlyCollection<ObjectSchema>
     {
         private static readonly HashSet<Type> _defaultTypes = new HashSet<Type>();
-        private static readonly Lazy<RealmSchema> _default = new Lazy<RealmSchema>(() => CreateSchemaForClasses(_defaultTypes));
+        private static readonly Lazy<RealmSchema> _default = new Lazy<RealmSchema>(GetSchema);
         private readonly ReadOnlyDictionary<string, ObjectSchema> _objects;
 
         /// <summary>
@@ -49,6 +52,8 @@ namespace Realms.Schema
         /// <exception cref="NotSupportedException">Thrown if the schema has already materialized.</exception>
         public static void AddDefaultTypes(IEnumerable<Type> types)
         {
+            Argument.NotNull(types, nameof(types));
+
             foreach (var type in types)
             {
                 if (_defaultTypes.Add(type) &&
@@ -91,12 +96,19 @@ namespace Realms.Schema
             return obj;
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Returns an enumerator that iterates through the collection.
+        /// </summary>
+        /// <returns>An enumerator that can be used to iterate through the collection.</returns>
         public IEnumerator<ObjectSchema> GetEnumerator()
         {
             return _objects.Values.GetEnumerator();
         }
 
+        /// <summary>
+        /// Returns an enumerator that iterates through the collection.
+        /// </summary>
+        /// <returns>An enumerator that can be used to iterate through the collection.</returns>
         IEnumerator IEnumerable.GetEnumerator()
         {
             return GetEnumerator();
@@ -117,19 +129,52 @@ namespace Realms.Schema
 
             foreach (var @class in classes)
             {
+                var typeInfo = @class.GetTypeInfo();
                 var objectSchema = ObjectSchema.FromType(@class.GetTypeInfo());
-                if (!classNames.Add(objectSchema.Name))
+
+                if (classNames.Add(objectSchema.Name))
                 {
-                    var duplicateType = builder.Single(s => s.Name == objectSchema.Name).Type;
-                    var errorMessage = "The names (without namespace) of objects persisted in Realm must be unique." +
-                        $"The duplicate types are {@class.FullName} and {duplicateType.FullName}. Either rename one" +
-                        " of them or explicitly specify ObjectClasses on your RealmConfiguration.";
-                    throw new NotSupportedException(errorMessage);
+                    builder.Add(objectSchema);
                 }
-                builder.Add(objectSchema);
+                else
+                {
+                    var duplicateType = builder.FirstOrDefault(s => s.Name == objectSchema.Name).Type;
+                    if (typeInfo.FullName != duplicateType.FullName)
+                    {
+                        var errorMessage = "The names (without namespace) of objects persisted in Realm must be unique." +
+                            $"The duplicate types are {@class.FullName} and {duplicateType.FullName}. Either rename one" +
+                            " of them or explicitly specify ObjectClasses on your RealmConfiguration.";
+                        throw new NotSupportedException(errorMessage);
+                    }
+                }
             }
 
             return builder.Build();
+        }
+
+        internal static RealmSchema GetSchema()
+        {
+            if (_defaultTypes.Count == 0)
+            {
+                // this was introduced because Unity's IL2CPP won't behave as expected with module initializers
+                // so we manually do what .Net-like frameworks usually do with module initializers
+                try
+                {
+                    var moduleInitializers = AppDomain.CurrentDomain.GetAssemblies()
+                        .Select(assembly => assembly.GetType("RealmModuleInitializer")?.GetMethod("Initialize"))
+                        .Where(method => method != null);
+
+                    foreach (var moduleInitializer in moduleInitializers)
+                    {
+                        moduleInitializer.Invoke(null, null);
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            return CreateSchemaForClasses(_defaultTypes);
         }
 
         internal static RealmSchema CreateFromObjectStoreSchema(Native.Schema nativeSchema)
@@ -138,7 +183,8 @@ namespace Realms.Schema
             for (var i = 0; i < nativeSchema.objects_len; i++)
             {
                 var objectSchema = Marshal.PtrToStructure<Native.SchemaObject>(IntPtr.Add(nativeSchema.objects, i * Native.SchemaObject.Size));
-                var builder = new ObjectSchema.Builder(objectSchema.name);
+
+                var builder = new ObjectSchema.Builder(objectSchema.name, objectSchema.is_embedded);
 
                 for (var n = objectSchema.properties_start; n < objectSchema.properties_end; n++)
                 {
@@ -160,14 +206,14 @@ namespace Realms.Schema
             return new RealmSchema(objects);
         }
 
-        private class Builder : List<ObjectSchema>
+        internal class Builder : List<ObjectSchema>
         {
             public RealmSchema Build()
             {
                 if (Count == 0)
                 {
                     throw new InvalidOperationException(
-                        "No RealmObjects. Has linker stripped them? See https://realm.io/docs/xamarin/latest/#linker-stripped-schema");
+                        "No RealmObjects. Has linker stripped them? See https://docs.mongodb.com/realm-legacy/docs/dotnet/latest/#linker-stripped-schema");
                 }
 
                 return new RealmSchema(this);
